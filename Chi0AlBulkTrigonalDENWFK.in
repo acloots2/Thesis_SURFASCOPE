@@ -1,0 +1,74 @@
+###Computation of chi0 of bulk aluminium
+
+### Ground state of Al ###
+
+###Convergence cycles
+ndtset 2
+
+###Definition of the FCC Cell
+acell 3*5.3924972503 #Scaling of the primitive vector in Bohr
+angdeg 60 60 60 #Primitive vector to construct the unit cell
+
+###One aluminium atom per unit cell in (0 0 0)
+natom 1         #One atom
+ntypat 1        #Obvisouly, only one type of atom
+znucl 13        #The atom is aluminium
+typat 1         #The atom is of type 1 which is aluminium
+                #The redondance is made explicit for clarity reason
+
+xcart 0 0 0     #the only atom is positionned in 0 0 0 Bohr
+
+###Definition of the kpt grid
+kptopt 1        #Does not use any symmetry of the problem to generate a grid in the IBZ
+                # from the variable ngkpt or kptrlatt and  shiftk and nshiftk
+ngkpt 4 4 4      #Already quite a big grid
+nshiftk 1       #4 shifts with the usual shifts for FCC lattice
+shiftk 0 0 0
+
+#Original grid
+#ngkpt 6 6 6
+#nshiftk 4
+#0.5 0.5 0.5
+# 0.5 0.0 0.0
+# 0.0 0.5 0.0
+# 0.0 0.0 0.5
+
+###Convergence criterion and plane wave basis set
+ecut 14          #small ecut [Hartree] for starting the computations
+nstep 30
+
+#Band occupation
+occopt 4
+tsmear 0.04
+
+#Cell optimisation
+
+#optcell 2
+#ionmov 2
+#ntime 15
+#ecutsm 0.5
+#dilatmx 1.05
+
+ixc 11
+tolsym 1e-08
+istwfk  *1 
+
+############
+# Dataset 1
+############
+# SCF-GS run 
+nband1  3
+tolvrs1 1.0e-10
+prtden 1
+
+############
+# Dataset 2
+############
+# Definition of parameters for the calculation of the WFK file
+nband2      40       # Number of (occ and empty) bands to be computed
+nbdbuf2      5
+iscf2       -2
+getden2     -1
+tolwfr2  1.0d-18     # Will stop when this tolerance is achieved 
+prtvol 5
+

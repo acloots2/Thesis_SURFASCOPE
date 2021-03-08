@@ -1,0 +1,139 @@
+###Computation of chi0 of bulk aluminium
+
+### Ground state of Al ###
+
+###Convergence cycles
+ndtset 5
+
+###Definition of the FCC Cell
+acell 3*5.3924972503 #Scaling of the primitive vector in Bohr
+angdeg 60 60 60 #Primitive vector to construct the unit cell
+
+###One aluminium atom per unit cell in (0 0 0)
+natom 1         #One atom
+ntypat 1        #Obvisouly, only one type of atom
+znucl 13        #The atom is aluminium
+typat 1         #The atom is of type 1 which is aluminium
+                #The redondance is made explicit for clarity reason
+
+xcart 0 0 0     #the only atom is positionned in 0 0 0 Bohr
+
+###Definition of the kpt grid
+kptopt 1        #Does not use any symmetry of the problem to generate a grid in the IBZ
+                # from the variable ngkpt or kptrlatt and  shiftk and nshiftk
+ngkpt 4 4 4      #Already quite a big grid
+nshiftk 1       #4 shifts with the usual shifts for FCC lattice
+shiftk 0 0 0
+
+#Original grid
+#ngkpt 6 6 6
+#nshiftk 4
+#0.5 0.5 0.5
+# 0.5 0.0 0.0
+# 0.0 0.5 0.0
+# 0.0 0.0 0.5
+
+###Convergence criterion and plane wave basis set
+ecut 14          #small ecut [Hartree] for starting the computations
+nstep 15
+
+#Band occupation
+occopt 4
+tsmear 0.04
+
+#Cell optimisation
+
+#optcell 2
+#ionmov 2
+#ntime 15
+#ecutsm 0.5
+#dilatmx 1.05
+
+ixc 11
+tolsym 1e-08
+istwfk  *1 
+
+############
+# Dataset 1-5
+############
+# Calculation of the screening (epsilon^-1 matrix)
+optdriver  3        # Screening calculation
+getwfk 2           # Obtain WFK file from previous dataset
+nband:     17       # Bands to be used in the screening calculation
+nband+     17
+ecuteps    3.6      # Cut-off energy of the planewave set to represent the dielectric matrix. 
+                     # It is important to adjust this parameter.
+ppmfrq    16.7 eV   # Imaginary frequency where to calculate the screening
+prtsuscep 1          # Print \chi0
+iomode 3
+awtr 0
+gwcalctyp 2
+nfreqim 4
+nfreqre 10
+freqremax 1.
+ecutwfn 14
+nqptdm 64
+qptdm  0.00000000E+00  0.00000000E+00  0.00000000E+00
+ 2.50000000E-01  0.00000000E+00  0.00000000E+00
+ 5.00000000E-01  0.00000000E+00  0.00000000E+00
+-2.50000000E-01  0.00000000E+00  0.00000000E+00
+ 0.00000000E+00  2.50000000E-01  0.00000000E+00
+ 2.50000000E-01  2.50000000E-01  0.00000000E+00
+ 5.00000000E-01  2.50000000E-01  0.00000000E+00
+-2.50000000E-01  2.50000000E-01  0.00000000E+00
+ 0.00000000E+00  5.00000000E-01  0.00000000E+00
+ 2.50000000E-01  5.00000000E-01  0.00000000E+00
+ 5.00000000E-01  5.00000000E-01  0.00000000E+00
+ -2.50000000E-01  5.00000000E-01  0.00000000E+00
+ 0.00000000E+00 -2.50000000E-01  0.00000000E+00
+ 2.50000000E-01 -2.50000000E-01  0.00000000E+00
+ 5.00000000E-01 -2.50000000E-01  0.00000000E+00
+-2.50000000E-01 -2.50000000E-01  0.00000000E+00
+ 0.00000000E+00  0.00000000E+00  2.50000000E-01
+ 2.50000000E-01  0.00000000E+00  2.50000000E-01
+ 5.00000000E-01  0.00000000E+00  2.50000000E-01
+-2.50000000E-01  0.00000000E+00  2.50000000E-01
+ 0.00000000E+00  2.50000000E-01  2.50000000E-01
+ 2.50000000E-01  2.50000000E-01  2.50000000E-01
+ 5.00000000E-01  2.50000000E-01  2.50000000E-01
+-2.50000000E-01  2.50000000E-01  2.50000000E-01
+ 0.00000000E+00  5.00000000E-01  2.50000000E-01
+ 2.50000000E-01  5.00000000E-01  2.50000000E-01
+ 5.00000000E-01  5.00000000E-01  2.50000000E-01
+-2.50000000E-01  5.00000000E-01  2.50000000E-01
+ 0.00000000E+00 -2.50000000E-01  2.50000000E-01
+ 2.50000000E-01 -2.50000000E-01  2.50000000E-01
+ 5.00000000E-01 -2.50000000E-01  2.50000000E-01
+-2.50000000E-01 -2.50000000E-01  2.50000000E-01
+ 0.00000000E+00  0.00000000E+00  5.00000000E-01
+ 2.50000000E-01  0.00000000E+00  5.00000000E-01
+ 5.00000000E-01  0.00000000E+00  5.00000000E-01
+-2.50000000E-01  0.00000000E+00  5.00000000E-01
+ 0.00000000E+00  2.50000000E-01  5.00000000E-01
+ 2.50000000E-01  2.50000000E-01  5.00000000E-01
+ 5.00000000E-01  2.50000000E-01  5.00000000E-01
+-2.50000000E-01  2.50000000E-01  5.00000000E-01
+ 0.00000000E+00  5.00000000E-01  5.00000000E-01
+ 2.50000000E-01  5.00000000E-01  5.00000000E-01
+ 5.00000000E-01  5.00000000E-01  5.00000000E-01
+-2.50000000E-01  5.00000000E-01  5.00000000E-01
+ 0.00000000E+00 -2.50000000E-01  5.00000000E-01
+ 2.50000000E-01 -2.50000000E-01  5.00000000E-01
+ 5.00000000E-01 -2.50000000E-01  5.00000000E-01
+-2.50000000E-01 -2.50000000E-01  5.00000000E-01
+ 0.00000000E+00  0.00000000E+00 -2.50000000E-01
+ 2.50000000E-01  0.00000000E+00 -2.50000000E-01
+ 5.00000000E-01  0.00000000E+00 -2.50000000E-01
+-2.50000000E-01  0.00000000E+00 -2.50000000E-01
+ 0.00000000E+00  2.50000000E-01 -2.50000000E-01
+ 2.50000000E-01  2.50000000E-01 -2.50000000E-01
+ 5.00000000E-01  2.50000000E-01 -2.50000000E-01
+ -2.50000000E-01  2.50000000E-01 -2.50000000E-01
+ 0.00000000E+00  5.00000000E-01 -2.50000000E-01
+ 2.50000000E-01  5.00000000E-01 -2.50000000E-01
+ 5.00000000E-01  5.00000000E-01 -2.50000000E-01
+-2.50000000E-01  5.00000000E-01 -2.50000000E-01
+ 0.00000000E+00 -2.50000000E-01 -2.50000000E-01
+ 2.50000000E-01 -2.50000000E-01 -2.50000000E-01
+ 5.00000000E-01 -2.50000000E-01 -2.50000000E-01
+-2.50000000E-01 -2.50000000E-01 -2.50000000E-01
