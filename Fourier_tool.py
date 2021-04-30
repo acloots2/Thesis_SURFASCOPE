@@ -203,7 +203,7 @@ def FFT2(row,indtovec,n1,n2,n3,nvec,fftboxsize):
     for i in range(n1):
         for j in range(n2):
             for k in range(n3):
-                rowout[k+j*n3+i*n3*n2]=FFT[-i,-j,-k]
+                rowout[k+j*n3+i*n3*n2]=FFT[i,j,k]
     return rowout
 
 ########################################################################################
