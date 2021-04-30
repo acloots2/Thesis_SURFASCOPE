@@ -34,7 +34,6 @@ def Build_Chi0GG(filename,opt,omega=0):
                 vec_qG_to_ind_without_border[qG]=count
                 ind_qG_to_vec_without_border[count]=qG
                 count+=1
-        print(count)
         vec_table_without_border=np.zeros((count,3),dtype=int)
         for i in range(count):
             qG=ind_qG_to_vec_without_border[i]
@@ -78,13 +77,12 @@ def Build_Chi0GG(filename,opt,omega=0):
         TRec=Sym.tnons
         Tim_Rev=Sym.has_timerev
         nsym=len(SymRec)
-
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ
         vec_q_toind,ind_q_tovec,sym_dict={},{},{}
         ind=0
         for i in range(nsym):
             for j in range(nkpt):
-                q=np.matmul(SymRec[i],kpoints[j].frac_coords+TRec[i])
+                q=np.matmul(SymRec[i],kpoints[j].frac_coords)#+TRec[i]
                 if (q[0],q[1],q[2]) not in vec_q_toind.keys():
                     if np.amax(q)<=0.5 and np.amin(q)>-0.5:
                         vec_q_toind[(q[0],q[1],q[2])]=ind
@@ -108,10 +106,12 @@ def Build_Chi0GG(filename,opt,omega=0):
                 else:
                     continue
         nq=len(sym_dict)
+        print(vec_q_toind)
+        print(nq)
         G_dict={}
         for i in range(ng):
             G_dict[(G[i,0],G[i,1],G[i,2])]=i
-        
+        print(G_dict)
         qibzG_dict={}
         ind_qibzG_dict={}
         qbzG_dict={}
@@ -126,7 +126,8 @@ def Build_Chi0GG(filename,opt,omega=0):
                 qG=q+G[j]
                 qbzG_dict[(qG[0],qG[1],qG[2])]=j+i*ng
         
-        
+        print(len(qibzG_dict))
+        print(len(qbzG_dict))
 
         vec_qG_to_ind_inset,ind_qG_to_vec_inset={},{}
         count=0
@@ -134,7 +135,7 @@ def Build_Chi0GG(filename,opt,omega=0):
             qibzG=ind_qibzG_dict[i]
             in_qGset=True
             for j in range(nsym):
-                qGrot=np.matmul(SymRec[j],[qibzG[0],qibzG[1],qibzG[2]])+TRec[j]
+                qGrot=np.matmul(SymRec[j],[qibzG[0],qibzG[1],qibzG[2]])
                 qGtest=(qGrot[0],qGrot[1],qGrot[2])
                 if qGtest not in qbzG_dict.keys():
                     in_qGset=False
@@ -150,7 +151,7 @@ def Build_Chi0GG(filename,opt,omega=0):
         for i in range(count):
             qibzG=ind_qG_to_vec_inset[i]
             for j in range(nsym):
-                qG=np.matmul(SymRec[j],[qibzG[0],qibzG[1],qibzG[2]])+TRec[j]
+                qG=np.matmul(SymRec[j],[qibzG[0],qibzG[1],qibzG[2]])
                 if (qG[0],qG[1],qG[2]) not in vec_qG_to_ind_without_border.keys():
                     qGind=np.round(np.multiply([qG[0],qG[1],qG[2]],nk))
                     vec_to_ind_to_pass[(qGind[0],qGind[1],qGind[2])]=secondcount
@@ -159,6 +160,7 @@ def Build_Chi0GG(filename,opt,omega=0):
                     ind_qG_to_vec_without_border[secondcount]=(qG[0],qG[1],qG[2])
                     secondcount+=1
         nvec=len(vec_qG_to_ind_without_border) 
+        print(nvec)
         vec_table_without_border=np.zeros((nvec,3),dtype=int)
         for i in range(nvec):
             qG=ind_qG_to_vec_without_border[i]
@@ -176,12 +178,13 @@ def Build_Chi0GG(filename,opt,omega=0):
                 SymR2=SymRec[SymData[2][0]]
                 SymR=np.matmul(SymR1,SymR2)
                 qorigin=SymRec[2][1]
-                t=TRec[SymData[2][0]]
+                #t=TRec[SymData[2][0]]
+                t=[0,0,0]
             else:
                 SymR=SymRec[SymData[0]]
-                t=TRec[SymData[0]]
+                t=[0,0,0]
                 qorigin=kpoints[SymData[1]]
-            chi0=sus_ncfile.reader.read_wggmat(qvec).wggmat
+            chi0=sus_ncfile.reader.read_wggmat(qorigin).wggmat
             for j in range(ng):
                 G1=G[j]
                 qG1vec=qvec+G1
