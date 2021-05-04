@@ -64,16 +64,17 @@ def Build_Chi0GG(filename, opt, omega = 0):
         for i in range(nkpt):
             chi0 = sus_ncfile.reader.read_wggmat(kpoints[i]).wggmat
             chi0GG[i, :, :] = chi0[omega]
-            q = kpoints[i].frac_coords
+            q = np.multiply(kpoints[i].frac_coords, nk)
             for j in range(ng):
-                qG_vec = q+G[j]
+                qG_vec = q+np.multiply(G[j], nk)
                 qG=(qG_vec[0], qG_vec[1], qG_vec[2])
                 if qG not in vec_qG_to_ind_without_border.keys():
+                    print()
                     chi0GG[i, j, :] = np.zeros(ng)
                     chi0GG[i, :, j] = np.zeros(ng)
         #TO DO : 
         # Add Symmetrization
-        return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec
+        return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G
     
     elif opt=='FromSym':
         
@@ -223,7 +224,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                         chi0GG[i, j, k] = cmath.exp(ic*np.dot(t, G2-G1))*chi0[omega, indchi1, indchi2]
 
 
-        return chi0GG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3, ind_q_to_vec, ind_G_to_vec
+        return chi0GG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G
 
 
     elif opt=='FullBZ1':
@@ -295,46 +296,80 @@ def Build_Chi0GG(filename, opt, omega = 0):
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
 
 
-def FFT_chi0(filename, opt1, opt2="Standard", omega=0):
-    chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec = Build_Chi0GG(filename, opt1, omega)
-    nq, ng1, ng2 = chi0GG.shape
-    if ng1 != ng2:
-        return "There is a problem in the code"
-    ng=ng1
-    nqg = nq * ng
-    n1, n2, n3=round(n1), round(n2), round(n3)
-    fftboxsize = round(n1*n2*n3)
+def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
     
     if opt2 == "Standard":
-        # Première FFT
-        print("Starting first FFT")
-        chi0rG = np.zeros((fftboxsize, nqg), dtype = complex)
-        qG = np.zeros((nqg, 3), dtype = int)
-        for i in range(nq):
-            q = ind_q_to_vec[i]
-            for j in range(ng):
-                chi0GqG2 = chi0GG[i, :, j]
-                FFTBox = np.zeros((n1, n2, n3), dtype = complex)
-                for k in range(ng):
-                    G1 = ind_G_to_vec[k]
-                    qG1 = np.round(q + G1)
-                    qG[k+i*ng] = qG1
-                    FFTBox[round(qG1[0]), round(qG1[1]), round(qG1[2])] = chi0GqG2[k]
-                FFT = np.fft.ifftn(FFTBox)
-                chi0rG[:, i]= np.reshape(FFT, fftboxsize)
+        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3 = Build_Chi0GG2D(filename, opt1, omega)
+        nqG1, nqG2 = chi0GG.shape
+        n1, n2, n3=round(n1), round(n2), round(n3)
 
-        # Seconde FFT
-        print("Starting second FFT")
+        #Première FFT:
+        fftboxsize = round(n1*n2*n3)
+        chi0rG = np.zeros((fftboxsize, nqG2), dtype = complex)
+        print("Starting first FFT")
+        for i in range(nqG2):
+            chi0GG2 = chi0GG[:, i]
+            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            for j in range(nqG1):
+                qG = ind_qG_to_vec[j]
+                FFTBox[round(qG[0]), round(qG[1]), round(qG[2])] = chi0GG2[j]
+            FFT = np.fft.ifftn(FFTBox)
+            chi0rG[:, i]= np.reshape(FFT, fftboxsize)
+    
+        #Seconde FFT:
         chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
+        print("Starting second FFT")
         for i in range(fftboxsize):
             chi0r1G = chi0rG[i, :]
             FFTBox = np.zeros((n1, n2, n3), dtype = complex)
-            for j in range(nqg):
-                qG2 = qG[j]
-                FFTBox[-round(qG2[0]), -round(qG2[1]), -round(qG2[2])] = chi0r1G[j]
+            for j in range(nqG2):
+                qG = ind_qG_to_vec[j]
+                FFTBox[-round(qG[0]), -round(qG[1]), -round(qG[2])] = chi0r1G[j]
+            FFT = np.fft.ifftn(FFTBox)  
+            chi0rr[i] = FFT
+        chi0rr_out = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        return chi0rr_out 
+
+
+    elif opt2 == "Kaltak":
+        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G = Build_Chi0GG(filename, opt1, omega)
+        nq, ng1, ng2 = chi0GG.shape
+        if ng1 != ng2:
+            return "There is a problem in the code"
+        ng=ng1
+        nqg = nq * ng
+        n1, n2, n3=round(n1), round(n2), round(n3)
+        fftboxsize = round(n1*n2*n3)
+        maxG1,maxG2,maxG3=np.amax(np.abs(G[:,0])),np.amax(np.abs(G[:,1])),np.amax(np.abs(G[:,2]))
+        n4, n5, n6 = int(maxG1*2+1),int(maxG2*2+1),int(maxG3*2+1)
+        fftboxsizeG = n4*n5*n6
+        # Première FFT
+        print("Starting first FFT")
+        chi0rG = np.zeros((nq, fftboxsizeG, ng), dtype = complex)
+        qG = np.zeros((nqg, 3), dtype = int)
+        for i in range(nq):
+            for j in range(ng):
+                chi0GqG2 = chi0GG[i, :, j]
+                FFTBox = np.zeros((n4, n5, n6), dtype = complex)
+                for k in range(ng):
+                    FFTBox[round(G[k,0]), round(G[k,1]), round(G[k,2])] = chi0GqG2[k]
+                FFT = np.fft.ifftn(FFTBox)
+                chi0rG[i, :, j]= np.reshape(FFT, fftboxsizeG)
+
+        # Seconde FFT
+        print("Starting second FFT")
+        chi0rr = np.zeros((fftboxsizeG, n1, n2, n3), dtype = complex)
+        for i in range(fftboxsizeG):
+            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            for j in range(nq):
+                q = ind_q_to_vec[j]
+                for k in range(ng):
+                    G2 = ind_G_to_vec[k]
+                    qG2 = q+G2
+                    FFTBox[-round(qG2[0]), -round(qG2[1]), -round(qG2[2])] = chi0rG[j, i, k]
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i, :, :, :]=FFT
-        chi0rr_out = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        chi0rr_out = np.reshape(chi0rr, (n4, n5, n6, n1, n2, n3))
         return chi0rr_out
     
     
@@ -455,7 +490,7 @@ def Vis_tool(chi0rr, R, A, B, C, nk, nat_cell, pos_red, N=10000, isomin=2e-9):
     Rx,Ry,Rz = R
     values = np.abs(np.real(chi0rr[Rx, Ry, Rz,]))
     points = pc.point_cloud(X, Y, Z, values, N, isomin)
-
+    
     fn = RegularGridInterpolator((X, Y, Z), np.real(chi0rr[Rx, Ry, Rz,]), bounds_error=False, fill_value=None)
     color = fn(points)
 
@@ -853,8 +888,7 @@ def FFT_chi02D(filename, opt1, omega=0):
             qG = ind_qG_to_vec[j]
             FFTBox[-round(qG[0]), -round(qG[1]), -round(qG[2])] = chi0r1G[j]
         FFT = np.fft.ifftn(FFTBox)  
-        chi0rr[i] = FFT[l,m,n]
+        chi0rr[i] = FFT
     chi0rr_out = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
     return chi0rr_out
-    
     
