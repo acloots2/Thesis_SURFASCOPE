@@ -1,0 +1,17 @@
+The files contains the information for the matrix Chi0rrSlabSym
+
+
+
+The matrix has a shape (17, 17, 23, 17, 17, 23)
+
+The matrix has a size 44182609
+
+chi^0(0, 0) = (-7.089047561242004e-07+3.848710438272104e-16j)
+
+The max abs real value of chi^0 is 3.6924010660554835e-06
+
+The max abs imag value of chi^0 is 2.4787324642114646e-12
+
+int_v1 int_v2 chi^0 dv1 dv2 = (-2.2915500604849424e-09-9.440198740761428e-23j)
+
+int_v1 int_v2 |chi^0|^2 dv1 dv2 = 1.173050255558566e-07

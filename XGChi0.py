@@ -84,14 +84,15 @@ def Build_Chi0GG(filename, opt, omega = 0):
         TRec = Sym.tnons
         Tim_Rev = Sym.has_timerev
         nsym = len(SymRec)
-
+        nk = fsk(kpoints)
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ
 
         vec_q_toind, ind_q_tovec, sym_dict = {},{},{}
+        ind_q_to_vec = {}
         ind = 0
         for i in range(nsym):
             for j in range(nkpt):
-                q = np.matmul(SymRec[i], kpoints[j].frac_coords)#+TRec[i]
+                q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords),5)#+TRec[i]
                 if (q[0], q[1], q[2]) not in vec_q_toind.keys():
                     if np.amax(q) <= 0.5 and np.amin(q) >- 0.5:
                         vec_q_toind[(q[0], q[1], q[2])] = ind
@@ -212,7 +213,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 SG1 = np.matmul(np.linalg.inv(SymR), G1)
                 indchi1 = G_dict[(SG1[0], SG1[1], SG1[2])]
                 for k in range(ng):
-                    G2 = G[j]
+                    G2 = G[k]
                     qG2vec = qvec+G2
                     qG2 = (qG2vec[0], qG2vec[1], qG2vec[2])
                     if qG2 not in vec_qG_to_ind_without_border.keys():
@@ -221,7 +222,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                         ind2 = vec_qG_to_ind_without_border[qG2]
                         SG2 = np.matmul(np.linalg.inv(SymR), G2)
                         indchi2 = G_dict[(SG2[0], SG2[1], SG2[2])]
-                        chi0GG[i, j, k] = cmath.exp(ic*np.dot(t, G2-G1))*chi0[omega, indchi1, indchi2]
+                        chi0GG[i, j, k] = chi0[omega, indchi1, indchi2]#*cmath.exp(ic*np.dot(t, G2-G1))
 
 
         return chi0GG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G
@@ -327,7 +328,8 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
                 FFTBox[-round(qG[0]), -round(qG[1]), -round(qG[2])] = chi0r1G[j]
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i] = FFT
-        chi0rr_out = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        chi0rr_out0 = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
         return chi0rr_out 
 
 
@@ -369,7 +371,8 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
                     FFTBox[-round(qG2[0]), -round(qG2[1]), -round(qG2[2])] = chi0rG[j, i, k]
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i, :, :, :]=FFT
-        chi0rr_out = np.reshape(chi0rr, (n4, n5, n6, n1, n2, n3))
+        chi0rr_out0 = np.reshape(chi0rr, (n4, n5, n6, n1, n2, n3))
+        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
         return chi0rr_out
     
     
@@ -632,13 +635,13 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                     else:
                         indvec2 = vec_qG_to_ind_without_border[qG2]
                         chi0GG[indvec1, indvec2] = chi0[omega, j, k]
-        for i in range(count):
+        """ for i in range(count):
             for j in range(count):
                 vec_sym_1 = ind_qG_to_vec_without_border[i]
                 vec_sym_2 = ind_qG_to_vec_without_border[j]
                 k, l = vec_qG_to_ind_without_border[(-vec_sym_1[0], -vec_sym_1[1], -vec_sym_1[2])], vec_qG_to_ind_without_border[(-vec_sym_2[0], -vec_sym_2[1], -vec_sym_2[2])]
                 chi0GG[i, j] = 1/2*(chi0GG[i, j]+chi0GG[l, k])
-                chi0GG[l, k]=chi0GG[i, j]
+                chi0GG[l, k]=chi0GG[i, j] """
 
         return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3
     
@@ -657,7 +660,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
         ind = 0
         for i in range(nsym):
             for j in range(nkpt):
-                q = np.matmul(SymRec[i], kpoints[j].frac_coords)#+TRec[i]
+                q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords),5)#+TRec[i]
                 if (q[0], q[1], q[2]) not in vec_q_toind.keys():
                     if np.amax(q) <= 0.5 and np.amin(q) >- 0.5:
                         vec_q_toind[(q[0], q[1], q[2])] = ind
@@ -671,6 +674,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
         
         #Verification de l'inclusion de la symmétrie d'inversion
         invsym_bool = IsInvSymIn(SymRec, nsym)
+        
         if invsym_bool==False:
             for i in range(len(vec_q_toind)):
                 q=ind_q_tovec[i]
@@ -683,7 +687,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                 else:
                     continue
         nq = len(sym_dict)
-
+        print(vec_q_toind)
         #Liste des vecteurs G
         G_dict = {}
         for i in range(ng):
@@ -760,10 +764,10 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                 SymR = np.matmul(SymR1, SymR2)
                 qorigin = SymRec[2][1]
                 #t=TRec[SymData[2][0]]
-                t = [0, 0, 0]
+                #t = [0, 0, 0]
             else:
                 SymR = SymRec[SymData[0]]
-                t = [0, 0, 0]
+                #t = [0, 0, 0]
                 qorigin = kpoints[SymData[1]]
             chi0 = sus_ncfile.reader.read_wggmat(qorigin).wggmat
             for j in range(ng):
@@ -776,7 +780,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                 SG1 = np.matmul(np.linalg.inv(SymR), G1)
                 indchi1 = G_dict[(SG1[0], SG1[1], SG1[2])]
                 for k in range(ng):
-                    G2 = G[j]
+                    G2 = G[k]
                     qG2vec = qvec+G2
                     qG2 = (qG2vec[0], qG2vec[1], qG2vec[2])
                     if qG2 not in vec_qG_to_ind_without_border.keys():
@@ -785,7 +789,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                         ind2 = vec_qG_to_ind_without_border[qG2]
                         SG2 = np.matmul(np.linalg.inv(SymR), G2)
                         indchi2 = G_dict[(SG2[0], SG2[1], SG2[2])]
-                        chi0GG[ind1, ind2] = cmath.exp(ic*np.dot(t, G2-G1))*chi0[omega, indchi1, indchi2] 
+                        chi0GG[ind1, ind2] = chi0[omega, indchi1, indchi2]#*cmath.exp(ic*np.dot(t, G2-G1))
 
         return chi0GG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3
 

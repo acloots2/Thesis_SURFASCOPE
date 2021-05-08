@@ -1,0 +1,17 @@
+The files contains the information for the matrix Chi0rrBulkSymKaltak
+
+
+
+The matrix has a shape (7, 7, 7, 25, 25, 25)
+
+The matrix has a size 5359375
+
+chi^0(0, 0) = (-3.7929382168057355e-07+1.0671323112238981e-17j)
+
+The max abs real value of chi^0 is 2.1560446517091507e-05
+
+The max abs imag value of chi^0 is 7.448769639698813e-06
+
+int_v1 int_v2 chi^0 dv1 dv2 = (-1.4934729009258643e-08+1.2197274440461925e-19j)
+
+int_v1 int_v2 |chi^0|^2 dv1 dv2 = 1.1994068606918745e-06

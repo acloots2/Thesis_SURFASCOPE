@@ -1,0 +1,17 @@
+The files contains the information for the matrix Chi0rrSlabNsym0SymKaltak
+
+
+
+The matrix has a shape (5, 5, 23, 17, 17, 23)
+
+The matrix has a size 3822025
+
+chi^0(0, 0) = (-7.185391307566805e-06-4.952665964422997e-12j)
+
+The max abs real value of chi^0 is 3.214288943525338e-05
+
+The max abs imag value of chi^0 is 8.104682183206506e-06
+
+int_v1 int_v2 chi^0 dv1 dv2 = (-2.8401088110539645e-09+2.710505431213761e-20j)
+
+int_v1 int_v2 |chi^0|^2 dv1 dv2 = 8.818391433300301e-07

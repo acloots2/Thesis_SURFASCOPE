@@ -1,0 +1,17 @@
+The files contains the information for the matrix Chi0GGBulk2Dsym
+
+
+
+The matrix has a shape (5023, 5023)
+
+The matrix has a size 25230529
+
+chi^0(0, 0) = (-1.4934729009041803e-08+5.979431308702349e-26j)
+
+The max abs real value of chi^0 is 0.13832195103168488
+
+The max abs imag value of chi^0 is 1.6176227290998213e-05
+
+int_v1 int_v2 chi^0 dv1 dv2 = (-2.0327778255693243+5.7191622375712004e-11j)
+
+int_v1 int_v2 |chi^0|^2 dv1 dv2 = 6.428071144020533
