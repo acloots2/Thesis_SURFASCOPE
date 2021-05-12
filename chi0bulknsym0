@@ -1,0 +1,35 @@
+The matrix chi^0(r,r') was obtained from the fileAl_Bulk_nsym0o_DS1_SUS.nc with the options FromSym and Standard
+
+###################################
+###################################
+
+The matrix chi^0(q+G, q+G') has the following characterisitcs :
+
+- The matrix has a shape (527, 527)
+
+- The matrix has a size 277729
+
+- chi^0(0, 0) = (-1.252422663355901e-07-2.0964963187932457e-28j)
+
+- The max abs real value of chi^0 is 0.13829782605171204
+
+- The max abs imag value of chi^0 is 6.267606750043342e-06
+
+Sum over all components of chi^0  = (-11.683750929193323-3.7001874819299867e-13j)
+
+###################################
+###################################
+
+The matrix chi^0(r, r') has the following characterisitcs :
+
+- The matrix has a shape (17, 17, 17, 17, 17, 17)
+
+- The matrix has a size 24137569
+
+- chi^0(0, 0) = (-11.68375092919332-3.700187389380366e-13j)
+
+- The max abs real value of chi^0 is 33.90047281408947
+
+- The max abs imag value of chi^0 is 0.001039431304561734
+
+Sum over all components of chi^0  = (-3.0230438453934596+8.007483565108942e-15j)

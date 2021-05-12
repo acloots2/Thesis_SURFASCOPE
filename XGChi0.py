@@ -349,14 +349,25 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         print("Starting first FFT")
         chi0rG = np.zeros((nq, fftboxsizeG, ng), dtype = complex)
         qG = np.zeros((nqg, 3), dtype = int)
+        phase_fac = np.ones((n4, n5, n6), dtype = complex)
+        ic = complex(0, 1)
+
         for i in range(nq):
+            q = ind_q_to_vec[i]
+            qvec = [q[0], q[1], q[2]]
+            for m in range(n4):
+                for n in range(n5):
+                    for l in range(n6):
+                        phase_fac[m, n, l] = cmath.exp(-ic*np.dot(qvec, [m, n, l])) 
             for j in range(ng):
                 chi0GqG2 = chi0GG[i, :, j]
                 FFTBox = np.zeros((n4, n5, n6), dtype = complex)
                 for k in range(ng):
-                    FFTBox[round(G[k,0]), round(G[k,1]), round(G[k,2])] = chi0GqG2[k]
+                    FFTBox[round(G[k,0]), round(G[k,1]), round(G[k,2])] = chi0GqG2[k]    
                 FFT = np.fft.ifftn(FFTBox)
-                chi0rG[i, :, j]= np.reshape(FFT, fftboxsizeG)
+                FFT_out = np.multiply(FFT, phase_fac)
+                #add phase factor
+                chi0rG[i, :, j]= np.reshape(FFT_out, fftboxsizeG)
 
         # Seconde FFT
         print("Starting second FFT")
@@ -687,7 +698,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                 else:
                     continue
         nq = len(sym_dict)
-        print(vec_q_toind)
+        #print(vec_q_toind)
         #Liste des vecteurs G
         G_dict = {}
         for i in range(ng):
@@ -896,3 +907,54 @@ def FFT_chi02D(filename, opt1, omega=0):
     chi0rr_out = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
     return chi0rr_out
     
+def MatCharac(Matrr, filename, input_filename, opt1 = 'FullBZ', opt2 = 'Standart'):
+    MatCharac = open(filename, mode='w')
+    if opt2 == 'Standard':
+        MatCharac.write("The matrix chi^0(r,r') was obtained from the file" + input_filename + " with the options "+ opt1 +" and "+ opt2)
+        MatCharac.write("\n\n###################################")
+        MatCharac.write("\n###################################")
+        MatGG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3 = Build_Chi0GG2D(input_filename, opt1)
+        MatCharac.write("\n\nThe matrix chi^0(q+G, q+G') has the following characterisitcs :")
+        MatCharac.write("\n\n- The matrix has a shape " + str(MatGG.shape))
+        MatCharac.write("\n\n- The matrix has a size " + str(MatGG.size))
+        MatCharac.write("\n\n- chi^0(0, 0) = " +str(MatGG[0, 0]))
+        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(MatGG)))))
+        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(MatGG)))))
+        sum1 = np.sum(MatGG)
+        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
+        MatCharac.write("\n\n###################################")
+        MatCharac.write("\n###################################")
+        MatCharac.write("\n\nThe matrix chi^0(r, r') has the following characterisitcs :")
+        MatCharac.write("\n\n- The matrix has a shape " + str(Matrr.shape))
+        MatCharac.write("\n\n- The matrix has a size " + str(Matrr.size))
+        MatCharac.write("\n\n- chi^0(0, 0) = " +str(Matrr[0, 0, 0, 0, 0, 0]))
+        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(Matrr)))))
+        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(Matrr)))))
+        sum1 = np.sum(Matrr)
+        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
+    elif opt2 == 'Kaltak':
+        MatCharac.write("The matrix chi^0(r,r') was obtained from the file" + input_filename + " with the options "+ opt1 +" and "+ opt2)
+        MatCharac.write("\n\n###################################")
+        MatCharac.write("\n###################################")
+        MatGG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G = Build_Chi0GG(input_filename, opt1)
+        MatCharac.write("\n\nThe matrix chi^0(q+G, q+G') has the following characterisitcs :")
+        MatCharac.write("\n\n- The matrix has a shape " + str(MatGG.shape))
+        MatCharac.write("\n\n- The matrix has a size " + str(MatGG.size))
+        MatCharac.write("\n\n- chi^0(0, 0) = " +str(MatGG[0, 0, 0]))
+        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(MatGG)))))
+        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(MatGG)))))
+        sum1 = np.sum(MatGG)
+        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
+        MatCharac.write("\n\n###################################")
+        MatCharac.write("\n###################################")
+        MatCharac.write("\n\nThe matrix chi^0(r, r') has the following characterisitcs :")
+        MatCharac.write("\n\n- The matrix has a shape " + str(Matrr.shape))
+        MatCharac.write("\n\n- The matrix has a size " + str(Matrr.size))
+        MatCharac.write("\n\n- chi^0(0, 0) = " +str(Matrr[0, 0, 0, 0, 0, 0]))
+        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(Matrr)))))
+        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(Matrr)))))
+        sum1 = np.sum(Matrr)
+        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
+    else:
+        print("Not a valid option")
+    MatCharac.close()
