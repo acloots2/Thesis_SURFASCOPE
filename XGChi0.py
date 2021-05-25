@@ -9,30 +9,40 @@ from scipy.interpolate import RegularGridInterpolator
 import plotly.graph_objects as go
 
 def Build_Chi0GG(filename, opt, omega = 0):
-    sus_ncfile, kpoints, nw, ng, nkpt, G, nqg = openfile(filename)
+    sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
     if opt == 'FullBZ':
         nvec = nkpt*ng
         nk = fsk(kpoints)
-        #Creation d'un dictionnaire :
+        #Creation des dictionnaires : il en faut 1 pour aller des indices vers les vecteurs et un pour aller des vecteurs vers les indices. Les composant sont scale selon le nombre 
+        # le sampling de la BZ (ex : le vecteur [c0, c1, c2] est référencé à (c0*ngkpt[0], c1*ngkpt[1], c2*ngkpt[2])) de manière à ce qu'ils puissent être utilisé comme indices dans les matrices.
         vec_qG_to_ind = {}
         ind_qG_to_vec = {}
         ind_q_to_vec = {}
+        vec_q_to_ind = {}
         ind_G_to_vec = {}
+        vec_G_to_ind = {}
+        
+        #Initialisation d'un tableau pour garder les vecteurs q+G et pouvoir récupérer les données plus facilement que dans un dict.
+
         vec_table = np.zeros((nvec,3), dtype = int)
 
+        #Mise en mémoire de tous les vecteurs (q, G et q+G)
         for i in range(nkpt):
             q = kpoints[i].frac_coords
-            ind_q_to_vec[i] = np.multiply([q[0], q[1], q[2]], nk)
+            q_vec = np.round(np.multiply([q[0], q[1], q[2]], nk))
+            ind_q_to_vec[i] = q_vec
+            vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = i
             for j in range(ng):
                 if i == 0:
                     G_vec = G[j]
-                    ind_G_to_vec[j] = np.multiply([G_vec[0], G_vec[1], G_vec[2]], nk)
+                    ind_G_to_vec[j] = np.round(np.multiply([G_vec[0], G_vec[1], G_vec[2]], nk))
+                    vec_G_to_ind[(round(G_vec[0]*nk[0]), round(G_vec[1]*nk[1]), round(G_vec[2]*nk[2]))] = j
                 ind = j + i * ng
                 vec_table[ind] = np.round(np.multiply((kpoints[i].frac_coords + G[j]), nk))
                 qG = (vec_table[ind,0], vec_table[ind,1], vec_table[ind,2])
                 vec_qG_to_ind[qG] = ind 
                 ind_qG_to_vec[ind] = qG
-
+        print(len(ind_qG_to_vec))
         #Creation d'un second dictionnaire sans les points frontières :
 
         vec_qG_to_ind_without_border = {}
@@ -48,7 +58,6 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 vec_qG_to_ind_without_border[qG] = count
                 ind_qG_to_vec_without_border[count] = qG
                 count += 1
-
         vec_table_without_border = np.zeros((count, 3), dtype = int)
         for i in range(count):
             qG = ind_qG_to_vec_without_border[i]
@@ -60,123 +69,138 @@ def Build_Chi0GG(filename, opt, omega = 0):
         #Initialisation of chi0 :
 
         chi0GG = np.zeros((nkpt, ng, ng), dtype = complex)
-
         for i in range(nkpt):
             chi0 = sus_ncfile.reader.read_wggmat(kpoints[i]).wggmat
             chi0GG[i, :, :] = chi0[omega]
-            q = np.multiply(kpoints[i].frac_coords, nk)
             for j in range(ng):
-                qG_vec = q+np.multiply(G[j], nk)
-                qG=(qG_vec[0], qG_vec[1], qG_vec[2])
+                qG = ind_qG_to_vec[j+i*ng]
                 if qG not in vec_qG_to_ind_without_border.keys():
-                    print()
                     chi0GG[i, j, :] = np.zeros(ng)
                     chi0GG[i, :, j] = np.zeros(ng)
+        #print(chi0GG)   
         #TO DO : 
         # Add Symmetrization
-        return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G
+
+        return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
     
     elif opt=='FromSym':
         
         structure = abipy.core.structure.Structure.from_file(filename)
         Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
         SymRec = Sym.symrec
-        TRec = Sym.tnons
-        Tim_Rev = Sym.has_timerev
         nsym = len(SymRec)
         nk = fsk(kpoints)
-        #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ
+        #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ. Needs to pay attention to rounding errors+needs to use Umklapp vectors to get all the data
 
         vec_q_toind, ind_q_tovec, sym_dict = {},{},{}
         ind_q_to_vec = {}
         ind = 0
         for i in range(nsym):
             for j in range(nkpt):
-                q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords),5)#+TRec[i]
-                if (q[0], q[1], q[2]) not in vec_q_toind.keys():
-                    if np.amax(q) <= 0.5 and np.amin(q) >- 0.5:
-                        vec_q_toind[(q[0], q[1], q[2])] = ind
-                        ind_q_tovec[ind] = (q[0], q[1], q[2])
-                        ind_q_to_vec[ind] = np.multiply(q, nk)
-                        sym_dict[ind]=(i, j, (0, 0))
-                        ind+=1
-                    else:
-                        continue
+                q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords), 3)#+TRec[i]
+                if np.amax(q) > 0.5 or np.amin(q) <= - 0.5:
+                    a, b, c = q[0], q[1], q[2]
+                    if q[0]>0.5:
+                        a=round(q[0]-1,3)
+                    elif q[0]<=-0.5:
+                        a=round(q[0]+1,3)
+                    if q[1]>0.5:
+                        b=round(q[1]-1,3)
+                    elif q[1]<=-0.5:
+                        b=round(q[1]+1,3)
+                    if q[2]>0.5:
+                        c=round(q[2]-1,3)
+                    elif q[2]<=-0.5:
+                        c=round(q[2]+1,3)
+                    q_in_bz = (a, b, c)
+                else:
+                    q_in_bz = (q[0], q[1], q[2])
+                #print(q_in_bz)
+                if q_in_bz not in vec_q_toind.keys():
+                            vec_q_toind[q_in_bz] = ind
+                            ind_q_tovec[ind] = q_in_bz
+                            q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
+                            ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
+                            sym_dict[ind]=(i, j, (0, 0))
+                            ind+=1
                 else:
                     continue
-        
+        #print(ind_q_to_vec)
+
         #Verification de l'inclusion de la symmétrie d'inversion
         invsym_bool = IsInvSymIn(SymRec, nsym)
+        
         if invsym_bool==False:
             for i in range(len(vec_q_toind)):
                 q=ind_q_tovec[i]
                 if (-q[0], -q[1], -q[2]) not in vec_q_toind.keys():
                     vec_q_toind[(-q[0], -q[1], -q[2])] = ind
                     ind_q_tovec[ind] = (-q[0], -q[1], -q[2])
-                    qsym = (symdict[i][0], symdict[i][1])
-                    ind_q_to_vec[ind] = np.multiply(-q, nk)
+                    qsym = (sym_dict[i][0], sym_dict[i][1])
+                    ind_q_to_vec[ind] = np.round(np.multiply(-q, nk), 5)
                     sym_dict[ind] = (nsym+1, i, qsym)
                     ind += 1
                 else:
                     continue
-        nq = len(sym_dict)
 
+        nq = len(sym_dict)
         #Liste des vecteurs G
-        G_dict = {}
+        vec_G_to_ind = {}
         ind_G_to_vec = {}
         for i in range(ng):
-            G_dict[(G[i, 0], G[i, 1], G[i, 2])] = i
-            ind_G_to_vec[i] = np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk)
+            G_vec = np.round([G[i, 0], G[i, 1], G[i, 2]])
+            vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
+            ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
+        
         #Listes des vecteurs qibz+G et qbz+G (dictionnaire + tableau)
-        qibzG_dict = {}
-        ind_qibzG_dict = {}
-        qbzG_dict = {}
+        vec_qibzG_to_ind = {}
+        ind_qibzG_to_vec = {}
+        vec_qbzG_to_ind = {}
+        ind_qbzG_to_vec ={}
         for i in range(nkpt):
             for j in range(ng):
-                qG = kpoints[i].frac_coords+G[j]
-                qibzG_dict[(qG[0], qG[1], qG[2])] = j+i*ng
-                ind_qibzG_dict[j+i*ng] = (qG[0], qG[1], qG[2])
+                qG = np.round(kpoints[i].frac_coords+G[j], 3)
+                vec_qibzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
+                ind_qibzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
+        nqibz = nkpt*ng
 
         for i in range(nq):
             for j in range(ng):
                 q = ind_q_tovec[i]
-                qG = q+G[j]
-                qbzG_dict[(qG[0], qG[1], qG[2])] = j+i*ng
-        
-        #Test des vecteurs dans le sets après rotation
-        vec_qG_to_ind_inset, ind_qG_to_vec_inset = {},{}
-        count=0
-        for i in range(len(qibzG_dict)):
-            qibzG = ind_qibzG_dict[i]
-            in_qGset = True
-            for j in range(nsym):
-                qGrot = np.matmul(SymRec[j], [qibzG[0], qibzG[1], qibzG[2]])
-                qGtest = (qGrot[0], qGrot[1], qGrot[2])
-                if qGtest not in qbzG_dict.keys():
-                    in_qGset = False
-                    break
-            if in_qGset == True:
-                vec_qG_to_ind_inset[qibzG] = count
-                ind_qG_to_vec_inset[count] = qibzG
-                count+=1
+                qG = np.round(q+G[j], 3)
+                vec_qbzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
+                ind_qbzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
+        #print(vec_qbzG_to_ind)
 
-        #Liste des veteurs q+G valables
+        #Test des vecteurs dans le sets après rotation
+        vec_qGrot_to_ind = {}
+        ind_qGrot_to_vec = {}
+        count = 0
+       
+        for i in range(nqibz):
+            qG_vec = ind_qibzG_to_vec[i]
+            for j in range(nsym):
+                qG_rot = np.round(np.matmul(SymRec[j],[qG_vec[0], qG_vec[1], qG_vec[2]]), 3)
+                #print(qG_rot)
+                if (qG_rot[0], qG_rot[1], qG_rot[2]) not in vec_qbzG_to_ind.keys() or (qG_rot[0], qG_rot[1], qG_rot[2]) in vec_qGrot_to_ind.keys():
+                    continue
+                else:
+                    vec_qGrot_to_ind[(qG_rot[0], qG_rot[1], qG_rot[2])] = count
+                    ind_qGrot_to_vec[count] = (qG_rot[0], qG_rot[1], qG_rot[2])
+                    count += 1
+        #Liste finale des vecteurs q+G valables
         nk = fsk(kpoints)
         vec_qG_to_ind_without_border, ind_qG_to_vec_without_border = {}, {}
-        vec_to_ind_to_pass, ind_to_vec_to_pass = {}, {}
-        secondcount = 0
+        count2 = 0
         for i in range(count):
-            qibzG = ind_qG_to_vec_inset[i]
-            for j in range(nsym):
-                qG = np.matmul(SymRec[j], [qibzG[0], qibzG[1], qibzG[2]])
-                if (qG[0], qG[1], qG[2]) not in vec_qG_to_ind_without_border.keys():
-                    qGind = np.round(np.multiply([qG[0], qG[1], qG[2]], nk))
-                    vec_to_ind_to_pass[(qGind[0], qGind[1], qGind[2])] = secondcount
-                    ind_to_vec_to_pass[secondcount] = (qGind[0], qGind[1], qGind[2])
-                    vec_qG_to_ind_without_border[(qG[0], qG[1], qG[2])] = secondcount
-                    ind_qG_to_vec_without_border[secondcount] = (qG[0], qG[1], qG[2])
-                    secondcount += 1
-
+            qG_vec = ind_qGrot_to_vec[i]
+            if (-qG_vec[0], -qG_vec[1], -qG_vec[2]) not in vec_qGrot_to_ind.keys():
+                continue
+            else:
+               vec_qG_to_ind_without_border[qG_vec]=count2
+               ind_qG_to_vec_without_border[count2] = qG_vec
+               count2 += 1
+        
         nvec = len(vec_qG_to_ind_without_border) 
         vec_table_without_border = np.zeros((nvec, 3), dtype=int)
         for i in range(nvec):
@@ -187,7 +211,6 @@ def Build_Chi0GG(filename, opt, omega = 0):
         n1, n2, n3=(2*s1)*nk[0]+1, (2*s2)*nk[1]+1, (2*s3)*nk[2]+1
 
         chi0GG = np.zeros((nq, ng, ng), dtype = complex)
-        ic = complex(0, 1)
         for i in range(nq):
             q = ind_q_tovec[i]
             qvec = [q[0], q[1], q[2]]
@@ -196,22 +219,20 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 SymR1 = [[-1,0,0], [0,-1,0], [-1,0,0]]
                 SymR2 = SymRec[SymData[2][0]]
                 SymR = np.matmul(SymR1, SymR2)
-                qorigin = SymRec[2][1]
+                q_origin = SymRec[2][1]
                 #t=TRec[SymData[2][0]]
-                t = [0, 0, 0]
             else:
                 SymR = SymRec[SymData[0]]
-                t = [0, 0, 0]
-                qorigin = kpoints[SymData[1]]
-            chi0 = sus_ncfile.reader.read_wggmat(qorigin).wggmat
+                q_origin = kpoints[SymData[1]]
+            chi0 = sus_ncfile.reader.read_wggmat(q_origin).wggmat
             for j in range(ng):
                 G1 = G[j]
-                qG1vec = qvec+G1
+                qG1vec = np.round(qvec+G1, 3)
                 qG1 = (qG1vec[0], qG1vec[1], qG1vec[2])
                 if qG1 not in vec_qG_to_ind_without_border.keys():
                     continue
-                SG1 = np.matmul(np.linalg.inv(SymR), G1)
-                indchi1 = G_dict[(SG1[0], SG1[1], SG1[2])]
+                SG1 = np.round(np.matmul(np.linalg.inv(SymR), G1))
+                indchi1 = vec_G_to_ind[(SG1[0], SG1[1], SG1[2])]
                 for k in range(ng):
                     G2 = G[k]
                     qG2vec = qvec+G2
@@ -219,80 +240,13 @@ def Build_Chi0GG(filename, opt, omega = 0):
                     if qG2 not in vec_qG_to_ind_without_border.keys():
                         continue
                     else:
-                        ind2 = vec_qG_to_ind_without_border[qG2]
-                        SG2 = np.matmul(np.linalg.inv(SymR), G2)
-                        indchi2 = G_dict[(SG2[0], SG2[1], SG2[2])]
+                        SG2 = np.round(np.matmul(np.linalg.inv(SymR), G2))
+                        indchi2 = vec_G_to_ind[(SG2[0], SG2[1], SG2[2])]
                         chi0GG[i, j, k] = chi0[omega, indchi1, indchi2]#*cmath.exp(ic*np.dot(t, G2-G1))
-
-
-        return chi0GG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G
-
-
-    elif opt=='FullBZ1':
-        #total number of vector possible
-        nvec=ng*nkpt
-        #Small code to get the size of the sampling grid used for the BZ
-        kpoint_tab=kpoints.frac_coords
-        ind1,ind2,ind3=kpoint_tab[:,0]!=0,kpoint_tab[:,1]!=0,kpoint_tab[:,2]!=0
-        kpoints_tab1,kpoints_tab2,kpoints_tab3=kpoint_tab[:,0][ind1],kpoint_tab[:,1][ind2],kpoint_tab[:,2][ind3]
-        mk1,mk2,mk3=np.amin(np.abs(kpoints_tab1)),np.amin(np.abs(kpoints_tab2)),np.amin(np.abs(kpoints_tab3))
-        nk=[np.round(1/mk1),np.round(1/mk2),np.round(1/mk3)]
-        #Initialisation des dictionnaires de vecteurs:
-        vec_qG_to_ind,ind_qG_to_vec={},{}
-        vec_table=np.zeros((nvec,3),dtype=int)
-        for i in range(nkpt):
-            for j in range(ng):
-                ind=j+i*ng
-                vec_table[ind]=np.round(np.multiply((kpoints[i].frac_coords+G[j]),nk))
-                qG=(vec_table[ind,0],vec_table[ind,1],vec_table[ind,2])
-                vec_qG_to_ind[qG]=ind
-                ind_qG_to_vec[ind]=qG
-        #Creation d'un second dictionnaire sans les points frontières :
-        vec_qG_to_ind_without_border={}
-        ind_qG_to_vec_without_border={}
-        #Filtre des vecteur pour garder uniquement les vecteurs internes 
-        count=0 #Numbers of inner vectors
-        for i in range(nvec):
-            qG=ind_qG_to_vec[i]
-            qGopp=(-qG[0],-qG[1],-qG[2])
-            if qGopp not in vec_qG_to_ind.keys():
-                continue
-            else:
-                vec_qG_to_ind_without_border[qG]=count
-                ind_qG_to_vec_without_border[count]=qG
-                count+=1
-        #print(vec_qG_to_ind_without_border)
-        vec_table_without_border=np.zeros((count,3),dtype=int)
-        for i in range(count):
-            qG=ind_qG_to_vec_without_border[i]
-            vec_table_without_border[i]=[qG[0],qG[1],qG[2]]
-        s1,s2,s3=np.amax(np.abs(vec_table_without_border[:,0])),np.amax(np.abs(vec_table_without_border[:,1])),np.amax(np.abs(vec_table_without_border[:,2]))
-        n1,n2,n3=2*s1+1,2*s2+1,2*s3+1
-        #print(len(vec_qG_to_ind_without_border))
-        chi0GG=np.zeros((count,count),dtype=complex)
         
 
-        for i in range(nkpt):
-            chi0=sus_ncfile.reader.read_wggmat(kpoints[i]).wggmat
-            for j in range(ng):
-                ind1=j+i*ng
-                qG1=(vec_table[ind1,0],vec_table[ind1,1],vec_table[ind1,2])
-                if qG1 not in vec_qG_to_ind_without_border.keys():
-                    continue
-                indvec1=vec_qG_to_ind_without_border[qG1]
-                for k in range(ng):
-                    ind2=k+i*ng
-                    qG2=(vec_table[ind2,0],vec_table[ind2,1],vec_table[ind2,2])
-                    if qG2 not in vec_qG_to_ind_without_border.keys():
-                        continue
-                    else:
-                        indvec2=vec_qG_to_ind_without_border[qG2]
-                        chi0GG[indvec1,indvec2]=chi0[omega,j,k]
-        
-        return chi0GG,vec_qG_to_ind_without_border,ind_qG_to_vec_without_border,n1,n2,n3
 
-
-                
+        return chi0GG, vec_qbzG_to_ind, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
     else:
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
 
@@ -316,7 +270,7 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
                 FFTBox[round(qG[0]), round(qG[1]), round(qG[2])] = chi0GG2[j]
             FFT = np.fft.ifftn(FFTBox)
             chi0rG[:, i]= np.reshape(FFT, fftboxsize)
-    
+        print(chi0rG.shape)
         #Seconde FFT:
         chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
         print("Starting second FFT")
@@ -332,15 +286,56 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         chi0rr_out = chi0rr_out0 * chi0rr_out0.size
         return chi0rr_out 
 
+    elif opt2 == "Standard2":
+        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
+        nq, ng1, ng2 = chi0GG.shape
+        if ng1 != ng2:
+            print("There is a problem in the code")
+            return "There is a problem in the code"
+        ng=ng1
+        nqg = ng*nq
+        n1, n2, n3 = round(n1), round(n2), round(n3)
+        fftboxsize = round(n1*n2*n3)
+        chi0rG = np.zeros((fftboxsize, nqg), dtype = complex)
+        qG = np.zeros((nqg, 3), dtype=int)
+        #count = 0
+        #print(chi0GG) 
+
+        for i in range(nq):
+            qvec = ind_q_to_vec[i]
+            q = [qvec[0], qvec[1], qvec[2]]
+            for j in range(ng):
+                FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+                for k in range(ng):
+                    qG = ind_qG_to_vec[k+i*ng]
+                    qG_vec = np.multiply([qG[0], qG[1], qG[2]], nk)
+                    FFTBox[round(qG_vec[0]), round(qG_vec[1]), round(qG_vec[2])] = chi0GG[i, j, k]
+                FFT = np.fft.ifftn(FFTBox)
+                chi0rG[:, j] = np.reshape(FFT, fftboxsize)
+
+        chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
+        for i in range(fftboxsize):
+            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            for j in range(nqg):
+                qG = ind_qG_to_vec[j]
+                qG_vec = np.multiply([qG[0], qG[1], qG[2]], nk)
+                print(chi0rG[i,j])
+                FFTBox[-round(qG_vec[0]), -round(qG_vec[1]), -round(qG[2])] = chi0rG[i, j]
+            print(FFTBox)
+            FFT = np.fft.ifftn(FFTBox) 
+            chi0rr[i, :, :, :]=FFT
+        chi0rr_out0 = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
+        return chi0rr_out
 
     elif opt2 == "Kaltak":
-        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G = Build_Chi0GG(filename, opt1, omega)
+        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
         nq, ng1, ng2 = chi0GG.shape
         if ng1 != ng2:
             return "There is a problem in the code"
         ng=ng1
         nqg = nq * ng
-        n1, n2, n3=round(n1), round(n2), round(n3)
+        n1, n2, n3 = round(n1), round(n2), round(n3)
         fftboxsize = round(n1*n2*n3)
         maxG1,maxG2,maxG3=np.amax(np.abs(G[:,0])),np.amax(np.abs(G[:,1])),np.amax(np.abs(G[:,2]))
         n4, n5, n6 = int(maxG1*2+1),int(maxG2*2+1),int(maxG3*2+1)
@@ -351,14 +346,16 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         qG = np.zeros((nqg, 3), dtype = int)
         phase_fac = np.ones((n4, n5, n6), dtype = complex)
         ic = complex(0, 1)
-
+        #print(ind_G_to_vec)
         for i in range(nq):
             q = ind_q_to_vec[i]
-            qvec = [q[0], q[1], q[2]]
+            qvec = np.array([q[0]/nk[0], q[1]/nk[1], q[2]/nk[2]])
+            #print(qvec)
             for m in range(n4):
                 for n in range(n5):
                     for l in range(n6):
-                        phase_fac[m, n, l] = cmath.exp(-ic*np.dot(qvec, [m, n, l])) 
+                        phase_fac[m, n, l] = cmath.exp(ic*np.dot(qvec, [m, n, l])) 
+            #print(phase_fac)
             for j in range(ng):
                 chi0GqG2 = chi0GG[i, :, j]
                 FFTBox = np.zeros((n4, n5, n6), dtype = complex)
@@ -379,16 +376,14 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
                 for k in range(ng):
                     G2 = ind_G_to_vec[k]
                     qG2 = q+G2
+                    print(chi0rG[j, i, k])
                     FFTBox[-round(qG2[0]), -round(qG2[1]), -round(qG2[2])] = chi0rG[j, i, k]
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i, :, :, :]=FFT
         chi0rr_out0 = np.reshape(chi0rr, (n4, n5, n6, n1, n2, n3))
         chi0rr_out = chi0rr_out0 * chi0rr_out0.size
         return chi0rr_out
-    
-    
-
-        
+          
     else:
         return "The second option is not valid, see the function definition to know the different possibilities"
 
@@ -586,7 +581,7 @@ def Vis_tool(chi0rr, R, A, B, C, nk, nat_cell, pos_red, N=10000, isomin=2e-9):
 
 
 def Build_Chi0GG2D(filename, opt, omega = 0):
-    sus_ncfile, kpoints, nw, ng, nkpt, G, nqg = openfile(filename)
+    sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
     if opt == 'FullBZ':
         nvec = nkpt*ng
         nk = fsk(kpoints)
@@ -661,8 +656,6 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
         structure = abipy.core.structure.Structure.from_file(filename)
         Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
         SymRec = Sym.symrec
-        TRec = Sym.tnons
-        Tim_Rev = Sym.has_timerev
         nsym = len(SymRec)
 
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ
@@ -692,7 +685,7 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
                 if (-q[0], -q[1], -q[2]) not in vec_q_toind.keys():
                     vec_q_toind[(-q[0], -q[1], -q[2])] = ind
                     ind_q_tovec[ind] = (-q[0], -q[1], -q[2])
-                    qsym = (symdict[i][0], symdict[i][1])
+                    qsym = (sym_dict[i][0], sym_dict[i][1])
                     sym_dict[ind] = (nsym+1, i, qsym)
                     ind += 1
                 else:

@@ -10,21 +10,17 @@ def openfile(filename):
     #Get the main data
     ##Open the file
     sus_ncfile = ScrFile(filename)
-    ##Get the list of kpoints
+    ##Get the list of kpoints (red coord)
     kpoints=sus_ncfile.reader.kpoints 
-    ##Get the number of frequencies
-    nw=sus_ncfile.reader.nw
     ##Get the number of G-vectors
     ng=sus_ncfile.reader.ng 
     ##Get the number of kpoints
     nkpt=len(kpoints)
-    ##Get the chi0 matrix of q=0 0 0
+    ##Get the chi0 matrix of q=0 0 0 (needed to get the G sphere)
     chi0=sus_ncfile.reader.read_wggmat(kpoints[0])
-    ##Get the list of G vectors
+    ##Get the list of G vectors (red coord)
     G=chi0.gsphere.gvecs
-    #Create a 2D FFT box where each index correspond to a q+G vector chi0(q+G1,q+G2)
-    nqg=nkpt*ng
-    return sus_ncfile, kpoints, nw, ng, nkpt, G, nqg
+    return sus_ncfile, kpoints, ng, nkpt, G
 
 
 #returns an np.array of dimension (nqgx3) with all the q+G vectors
