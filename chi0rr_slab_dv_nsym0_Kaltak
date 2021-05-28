@@ -1,0 +1,35 @@
+The matrix chi^0(r,r') was obtained from the fileAl_Slab_dvo_DS1_SUS.nc with the options FromSym and Kaltak
+
+###################################
+###################################
+
+The matrix chi^0(q+G, q+G') has the following characterisitcs :
+
+- The matrix has a shape (16, 529, 529)
+
+- The matrix has a size 4477456
+
+- chi^0(0, 0) = (-1.3822837319210635e-09+2.3758631942860542e-27j)
+
+- The max abs real value of chi^0 is 0.030877714976668358
+
+- The max abs imag value of chi^0 is 0.012006891891360283
+
+Sum over all components of chi^0  = (-50.513403103607835+3.2224578377909987e-08j)
+
+###################################
+###################################
+
+The matrix chi^0(r, r') has the following characterisitcs :
+
+- The matrix has a shape (5, 5, 45, 19, 19, 45)
+
+- The matrix has a size 18275625
+
+- chi^0(0, 0) = (-50.6634791380387-0.00011047223268064712j)
+
+- The max abs real value of chi^0 is 238.99193531535752
+
+- The max abs imag value of chi^0 is 49.86909668616425
+
+Sum over all components of chi^0  = (-0.025262099132874027-6.963318810448982e-13j)

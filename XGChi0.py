@@ -42,7 +42,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 qG = (vec_table[ind,0], vec_table[ind,1], vec_table[ind,2])
                 vec_qG_to_ind[qG] = ind 
                 ind_qG_to_vec[ind] = qG
-        print(len(ind_qG_to_vec))
+        
         #Creation d'un second dictionnaire sans les points frontières :
 
         vec_qG_to_ind_without_border = {}
@@ -81,7 +81,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         #TO DO : 
         # Add Symmetrization
 
-        return chi0GG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
+        return chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
     
     elif opt=='FromSym':
         
@@ -92,8 +92,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         nk = fsk(kpoints)
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ. Needs to pay attention to rounding errors+needs to use Umklapp vectors to get all the data
 
-        vec_q_toind, ind_q_tovec, sym_dict = {},{},{}
-        ind_q_to_vec = {}
+        vec_q_to_ind, ind_q_to_vec, sym_dict = {},{},{}
         ind = 0
         for i in range(nsym):
             for j in range(nkpt):
@@ -116,28 +115,25 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 else:
                     q_in_bz = (q[0], q[1], q[2])
                 #print(q_in_bz)
-                if q_in_bz not in vec_q_toind.keys():
-                            vec_q_toind[q_in_bz] = ind
-                            ind_q_tovec[ind] = q_in_bz
-                            q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
+                q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
+                if (q_vec[0], q_vec[1], q_vec[2]) not in vec_q_to_ind.keys():
                             ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
-                            sym_dict[ind]=(i, j, (0, 0))
+                            vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
+                            sym_dict[ind] = (i, j, (0, 0))
                             ind+=1
                 else:
                     continue
-        #print(ind_q_to_vec)
 
         #Verification de l'inclusion de la symmétrie d'inversion
         invsym_bool = IsInvSymIn(SymRec, nsym)
         
         if invsym_bool==False:
-            for i in range(len(vec_q_toind)):
-                q=ind_q_tovec[i]
-                if (-q[0], -q[1], -q[2]) not in vec_q_toind.keys():
-                    vec_q_toind[(-q[0], -q[1], -q[2])] = ind
-                    ind_q_tovec[ind] = (-q[0], -q[1], -q[2])
+            for i in range(len(vec_q_to_ind)):
+                q=ind_q_to_vec[i]
+                if (-q[0], -q[1], -q[2]) not in vec_q_to_ind.keys():
+                    vec_q_to_ind[(-q[0], -q[1], -q[2])] = ind
+                    ind_q_to_vec[ind] = (-q[0], -q[1], -q[2])
                     qsym = (sym_dict[i][0], sym_dict[i][1])
-                    ind_q_to_vec[ind] = np.round(np.multiply(-q, nk), 5)
                     sym_dict[ind] = (nsym+1, i, qsym)
                     ind += 1
                 else:
@@ -148,7 +144,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         vec_G_to_ind = {}
         ind_G_to_vec = {}
         for i in range(ng):
-            G_vec = np.round([G[i, 0], G[i, 1], G[i, 2]])
+            G_vec = np.round(np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk))
             vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
             ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
         
@@ -159,19 +155,21 @@ def Build_Chi0GG(filename, opt, omega = 0):
         ind_qbzG_to_vec ={}
         for i in range(nkpt):
             for j in range(ng):
-                qG = np.round(kpoints[i].frac_coords+G[j], 3)
+                kpt = kpoints[i].frac_coords
+                G_vec = G[j]
+                qG = np.round(np.multiply([kpt[0]+G_vec[0], kpt[1]+G_vec[1], kpt[2]+G_vec[2]], nk))
                 vec_qibzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
                 ind_qibzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
         nqibz = nkpt*ng
 
         for i in range(nq):
+            q = ind_q_to_vec[i]
             for j in range(ng):
-                q = ind_q_tovec[i]
-                qG = np.round(q+G[j], 3)
+                G_vec = ind_G_to_vec[j]
+                qG = np.round([q[0]+G_vec[0], q[1]+G_vec[1], q[2]+G_vec[2]])
                 vec_qbzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
                 ind_qbzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
-        #print(vec_qbzG_to_ind)
-
+       
         #Test des vecteurs dans le sets après rotation
         vec_qGrot_to_ind = {}
         ind_qGrot_to_vec = {}
@@ -180,7 +178,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         for i in range(nqibz):
             qG_vec = ind_qibzG_to_vec[i]
             for j in range(nsym):
-                qG_rot = np.round(np.matmul(SymRec[j],[qG_vec[0], qG_vec[1], qG_vec[2]]), 3)
+                qG_rot = np.round(np.matmul(SymRec[j],[qG_vec[0], qG_vec[1], qG_vec[2]]))
                 #print(qG_rot)
                 if (qG_rot[0], qG_rot[1], qG_rot[2]) not in vec_qbzG_to_ind.keys() or (qG_rot[0], qG_rot[1], qG_rot[2]) in vec_qGrot_to_ind.keys():
                     continue
@@ -189,7 +187,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                     ind_qGrot_to_vec[count] = (qG_rot[0], qG_rot[1], qG_rot[2])
                     count += 1
         #Liste finale des vecteurs q+G valables
-        nk = fsk(kpoints)
+       
         vec_qG_to_ind_without_border, ind_qG_to_vec_without_border = {}, {}
         count2 = 0
         for i in range(count):
@@ -208,12 +206,10 @@ def Build_Chi0GG(filename, opt, omega = 0):
             vec_table_without_border[i] = [qG[0], qG[1], qG[2]]
 
         s1, s2, s3 = np.amax(np.abs(vec_table_without_border[:, 0])), np.amax(np.abs(vec_table_without_border[:, 1])), np.amax(np.abs(vec_table_without_border[:, 2]))
-        n1, n2, n3=(2*s1)*nk[0]+1, (2*s2)*nk[1]+1, (2*s3)*nk[2]+1
-
+        n1, n2, n3=(2*s1)+1, (2*s2)+1, (2*s3)+1
         chi0GG = np.zeros((nq, ng, ng), dtype = complex)
         for i in range(nq):
-            q = ind_q_tovec[i]
-            qvec = [q[0], q[1], q[2]]
+            q = ind_q_to_vec[i]
             SymData = sym_dict[i]
             if SymData[0] == nsym+1:
                 SymR1 = [[-1,0,0], [0,-1,0], [-1,0,0]]
@@ -226,17 +222,17 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 q_origin = kpoints[SymData[1]]
             chi0 = sus_ncfile.reader.read_wggmat(q_origin).wggmat
             for j in range(ng):
-                G1 = G[j]
-                qG1vec = np.round(qvec+G1, 3)
-                qG1 = (qG1vec[0], qG1vec[1], qG1vec[2])
+                G1 = ind_G_to_vec[j]
+                qG1_vec = np.round([q[0]+G1[0], q[1]+G1[1], q[2]+G1[2]])
+                qG1 = (qG1_vec[0], qG1_vec[1], qG1_vec[2])
                 if qG1 not in vec_qG_to_ind_without_border.keys():
                     continue
                 SG1 = np.round(np.matmul(np.linalg.inv(SymR), G1))
                 indchi1 = vec_G_to_ind[(SG1[0], SG1[1], SG1[2])]
                 for k in range(ng):
-                    G2 = G[k]
-                    qG2vec = qvec+G2
-                    qG2 = (qG2vec[0], qG2vec[1], qG2vec[2])
+                    G2 = ind_G_to_vec[k]
+                    qG2_vec = np.round([q[0]+G2[0], q[1]+G2[1], q[2]+G2[2]])
+                    qG2 = (qG2_vec[0], qG2_vec[1], qG2_vec[2])
                     if qG2 not in vec_qG_to_ind_without_border.keys():
                         continue
                     else:
@@ -244,50 +240,13 @@ def Build_Chi0GG(filename, opt, omega = 0):
                         indchi2 = vec_G_to_ind[(SG2[0], SG2[1], SG2[2])]
                         chi0GG[i, j, k] = chi0[omega, indchi1, indchi2]#*cmath.exp(ic*np.dot(t, G2-G1))
         
-
-
-        return chi0GG, vec_qbzG_to_ind, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
+        return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
     else:
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
 
-
 def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
-    
     if opt2 == "Standard":
-        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3 = Build_Chi0GG2D(filename, opt1, omega)
-        nqG1, nqG2 = chi0GG.shape
-        n1, n2, n3=round(n1), round(n2), round(n3)
-
-        #Première FFT:
-        fftboxsize = round(n1*n2*n3)
-        chi0rG = np.zeros((fftboxsize, nqG2), dtype = complex)
-        print("Starting first FFT")
-        for i in range(nqG2):
-            chi0GG2 = chi0GG[:, i]
-            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
-            for j in range(nqG1):
-                qG = ind_qG_to_vec[j]
-                FFTBox[round(qG[0]), round(qG[1]), round(qG[2])] = chi0GG2[j]
-            FFT = np.fft.ifftn(FFTBox)
-            chi0rG[:, i]= np.reshape(FFT, fftboxsize)
-        print(chi0rG.shape)
-        #Seconde FFT:
-        chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
-        print("Starting second FFT")
-        for i in range(fftboxsize):
-            chi0r1G = chi0rG[i, :]
-            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
-            for j in range(nqG2):
-                qG = ind_qG_to_vec[j]
-                FFTBox[-round(qG[0]), -round(qG[1]), -round(qG[2])] = chi0r1G[j]
-            FFT = np.fft.ifftn(FFTBox)  
-            chi0rr[i] = FFT
-        chi0rr_out0 = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
-        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
-        return chi0rr_out 
-
-    elif opt2 == "Standard2":
-        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
+        chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
         nq, ng1, ng2 = chi0GG.shape
         if ng1 != ng2:
             print("There is a problem in the code")
@@ -297,31 +256,27 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         n1, n2, n3 = round(n1), round(n2), round(n3)
         fftboxsize = round(n1*n2*n3)
         chi0rG = np.zeros((fftboxsize, nqg), dtype = complex)
-        qG = np.zeros((nqg, 3), dtype=int)
-        #count = 0
-        #print(chi0GG) 
-
+        print("Starting first FFT")
         for i in range(nq):
-            qvec = ind_q_to_vec[i]
-            q = [qvec[0], qvec[1], qvec[2]]
-            for j in range(ng):
-                FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            q_vec = ind_q_to_vec[i]
+            q = [q_vec[0], q_vec[1], q_vec[2]]
+            for j in range(ng): 
+                FFTBox = np.zeros((n1, n2, n3), dtype = complex)               
                 for k in range(ng):
-                    qG = ind_qG_to_vec[k+i*ng]
-                    qG_vec = np.multiply([qG[0], qG[1], qG[2]], nk)
-                    FFTBox[round(qG_vec[0]), round(qG_vec[1]), round(qG_vec[2])] = chi0GG[i, j, k]
+                    G_vec = ind_G_to_vec[k]
+                    qG_vec_fft1 = [q[0]+G_vec[0], q[1]+G_vec[1], q[2]+G_vec[2]]
+                    FFTBox[round(qG_vec_fft1[0]), round(qG_vec_fft1[1]), round(qG_vec_fft1[2])] = chi0GG[i, j, k]
                 FFT = np.fft.ifftn(FFTBox)
-                chi0rG[:, j] = np.reshape(FFT, fftboxsize)
+                chi0rG[:, j+i*ng] = np.reshape(FFT, fftboxsize)
 
+
+        print("Starting second FFT")
         chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
         for i in range(fftboxsize):
             FFTBox = np.zeros((n1, n2, n3), dtype = complex)
             for j in range(nqg):
-                qG = ind_qG_to_vec[j]
-                qG_vec = np.multiply([qG[0], qG[1], qG[2]], nk)
-                print(chi0rG[i,j])
-                FFTBox[-round(qG_vec[0]), -round(qG_vec[1]), -round(qG[2])] = chi0rG[i, j]
-            print(FFTBox)
+                qG_vec_fft2 = ind_qG_to_vec[j]
+                FFTBox[-round(qG_vec_fft2[0]), -round(qG_vec_fft2[1]), -round(qG_vec_fft2[2])] = chi0rG[i, j]
             FFT = np.fft.ifftn(FFTBox) 
             chi0rr[i, :, :, :]=FFT
         chi0rr_out0 = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
@@ -329,7 +284,7 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         return chi0rr_out
 
     elif opt2 == "Kaltak":
-        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
+        chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(filename, opt1, omega)
         nq, ng1, ng2 = chi0GG.shape
         if ng1 != ng2:
             return "There is a problem in the code"
@@ -349,12 +304,12 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
         #print(ind_G_to_vec)
         for i in range(nq):
             q = ind_q_to_vec[i]
-            qvec = np.array([q[0]/nk[0], q[1]/nk[1], q[2]/nk[2]])
+            q_vec = np.array([q[0]/nk[0], q[1]/nk[1], q[2]/nk[2]])
             #print(qvec)
             for m in range(n4):
                 for n in range(n5):
                     for l in range(n6):
-                        phase_fac[m, n, l] = cmath.exp(ic*np.dot(qvec, [m, n, l])) 
+                        phase_fac[m, n, l] = cmath.exp(ic*np.dot(q_vec, [m, n, l])) 
             #print(phase_fac)
             for j in range(ng):
                 chi0GqG2 = chi0GG[i, :, j]
@@ -375,8 +330,7 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
                 q = ind_q_to_vec[j]
                 for k in range(ng):
                     G2 = ind_G_to_vec[k]
-                    qG2 = q+G2
-                    print(chi0rG[j, i, k])
+                    qG2 = [q[0]+G2[0], q[1]+G2[1], q[2]+G2[2]]
                     FFTBox[-round(qG2[0]), -round(qG2[1]), -round(qG2[2])] = chi0rG[j, i, k]
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i, :, :, :]=FFT
@@ -386,7 +340,6 @@ def FFT_chi0(filename, opt1 = "FullBZ", opt2 = "Standard", omega = 0):
           
     else:
         return "The second option is not valid, see the function definition to know the different possibilities"
-
 
 def IsInvSymIn(SymRec, nsym):
     Invlist=((-1,0,0),(0,-1,0),(0,0,-1))
@@ -400,9 +353,7 @@ def IsInvSymIn(SymRec, nsym):
     else:
         return False
     
-
-
-def Vis_tool_Bulk(chi0rr, R, A, B, C, nk, N=10000, isomin=2e-9):
+def Vis_tool_Bulk(chi0rr, R, A, B, C, nk, N=10000, isomin=1):
     
     # Point cloud
 
@@ -488,7 +439,7 @@ def Vis_tool_Bulk(chi0rr, R, A, B, C, nk, N=10000, isomin=2e-9):
 
     fig.show()
 
-def Vis_tool(chi0rr, R, A, B, C, nk, nat_cell, pos_red, N=10000, isomin=2e-9):
+def Vis_tool(chi0rr, R, A, B, C, nk, nat_cell, pos_red, N=10000, isomin=1):
     
     # Point cloud
 
@@ -577,8 +528,6 @@ def Vis_tool(chi0rr, R, A, B, C, nk, nat_cell, pos_red, N=10000, isomin=2e-9):
     ))
 
     fig.show()
-
-
 
 def Build_Chi0GG2D(filename, opt, omega = 0):
     sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
@@ -757,7 +706,6 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
         n1, n2, n3=(2*s1)*nk[0]+1, (2*s2)*nk[1]+1, (2*s3)*nk[2]+1
 
         chi0GG = np.zeros((nvec, nvec), dtype=complex)
-        ic = complex(0, 1)
         for i in range(nq):
             q = ind_q_tovec[i]
             qvec = [q[0], q[1], q[2]]
@@ -866,7 +814,6 @@ def Build_Chi0GG2D(filename, opt, omega = 0):
     else:
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
     
-
 def FFT_chi02D(filename, opt1, omega=0):
     
     chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3 = Build_Chi0GG2D(filename, opt1, omega)
@@ -902,52 +849,64 @@ def FFT_chi02D(filename, opt1, omega=0):
     
 def MatCharac(Matrr, filename, input_filename, opt1 = 'FullBZ', opt2 = 'Standart'):
     MatCharac = open(filename, mode='w')
-    if opt2 == 'Standard':
-        MatCharac.write("The matrix chi^0(r,r') was obtained from the file" + input_filename + " with the options "+ opt1 +" and "+ opt2)
-        MatCharac.write("\n\n###################################")
-        MatCharac.write("\n###################################")
-        MatGG, vec_to_ind_to_pass, ind_to_vec_to_pass, n1, n2, n3 = Build_Chi0GG2D(input_filename, opt1)
-        MatCharac.write("\n\nThe matrix chi^0(q+G, q+G') has the following characterisitcs :")
-        MatCharac.write("\n\n- The matrix has a shape " + str(MatGG.shape))
-        MatCharac.write("\n\n- The matrix has a size " + str(MatGG.size))
-        MatCharac.write("\n\n- chi^0(0, 0) = " +str(MatGG[0, 0]))
-        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(MatGG)))))
-        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(MatGG)))))
-        sum1 = np.sum(MatGG)
-        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
-        MatCharac.write("\n\n###################################")
-        MatCharac.write("\n###################################")
-        MatCharac.write("\n\nThe matrix chi^0(r, r') has the following characterisitcs :")
-        MatCharac.write("\n\n- The matrix has a shape " + str(Matrr.shape))
-        MatCharac.write("\n\n- The matrix has a size " + str(Matrr.size))
-        MatCharac.write("\n\n- chi^0(0, 0) = " +str(Matrr[0, 0, 0, 0, 0, 0]))
-        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(Matrr)))))
-        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(Matrr)))))
-        sum1 = np.sum(Matrr)
-        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
-    elif opt2 == 'Kaltak':
-        MatCharac.write("The matrix chi^0(r,r') was obtained from the file" + input_filename + " with the options "+ opt1 +" and "+ opt2)
-        MatCharac.write("\n\n###################################")
-        MatCharac.write("\n###################################")
-        MatGG, vec_qG_to_ind_without_border, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G = Build_Chi0GG(input_filename, opt1)
-        MatCharac.write("\n\nThe matrix chi^0(q+G, q+G') has the following characterisitcs :")
-        MatCharac.write("\n\n- The matrix has a shape " + str(MatGG.shape))
-        MatCharac.write("\n\n- The matrix has a size " + str(MatGG.size))
-        MatCharac.write("\n\n- chi^0(0, 0) = " +str(MatGG[0, 0, 0]))
-        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(MatGG)))))
-        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(MatGG)))))
-        sum1 = np.sum(MatGG)
-        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
-        MatCharac.write("\n\n###################################")
-        MatCharac.write("\n###################################")
-        MatCharac.write("\n\nThe matrix chi^0(r, r') has the following characterisitcs :")
-        MatCharac.write("\n\n- The matrix has a shape " + str(Matrr.shape))
-        MatCharac.write("\n\n- The matrix has a size " + str(Matrr.size))
-        MatCharac.write("\n\n- chi^0(0, 0) = " +str(Matrr[0, 0, 0, 0, 0, 0]))
-        MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(Matrr)))))
-        MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(Matrr)))))
-        sum1 = np.sum(Matrr)
-        MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
-    else:
-        print("Not a valid option")
+
+    MatCharac.write("The matrix chi^0(r,r') was obtained from the file" + input_filename + " with the options "+ opt1 +" and "+ opt2)
+    MatCharac.write("\n\n###################################")
+    MatCharac.write("\n###################################")
+    MatGG, ind_qG_to_vec_without_border, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk = Build_Chi0GG(input_filename, opt1)
+    MatCharac.write("\n\nThe matrix chi^0(q+G, q+G') has the following characterisitcs :")
+    MatCharac.write("\n\n- The matrix has a shape " + str(MatGG.shape))
+    MatCharac.write("\n\n- The matrix has a size " + str(MatGG.size))
+    MatCharac.write("\n\n- chi^0(0, 0) = " +str(MatGG[0, 0, 0]))
+    MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(MatGG)))))
+    MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(MatGG)))))
+    sum1 = np.sum(MatGG)
+    MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
+    MatCharac.write("\n\n###################################")
+    MatCharac.write("\n###################################")
+    MatCharac.write("\n\nThe matrix chi^0(r, r') has the following characterisitcs :")
+    MatCharac.write("\n\n- The matrix has a shape " + str(Matrr.shape))
+    MatCharac.write("\n\n- The matrix has a size " + str(Matrr.size))
+    MatCharac.write("\n\n- chi^0(0, 0) = " +str(Matrr[0, 0, 0, 0, 0, 0]))
+    MatCharac.write("\n\n- The max abs real value of chi^0 is " + str(np.amax(np.abs(np.real(Matrr)))))
+    MatCharac.write("\n\n- The max abs imag value of chi^0 is " + str(np.amax(np.abs(np.imag(Matrr)))))
+    sum1 = np.sum(Matrr)
+    MatCharac.write("\n\nSum over all components of chi^0  = " + str(sum1))
     MatCharac.close()
+
+""" if opt2 == "Standard":
+        chi0GG, vec_qG_to_ind, ind_qG_to_vec, n1, n2, n3 = Build_Chi0GG2D(filename, opt1, omega)
+        nqG1, nqG2 = chi0GG.shape
+        n1, n2, n3=round(n1), round(n2), round(n3)
+        count = 0
+        for i in range(nqG1):
+            for j in range(nqG2):
+                if chi0GG[i, j] != 0:
+                    count += 1
+        print(count)
+        #Première FFT:
+        fftboxsize = round(n1*n2*n3)
+        chi0rG = np.zeros((fftboxsize, nqG2), dtype = complex)
+        print("Starting first FFT")
+        for i in range(nqG2):
+            chi0GG2 = chi0GG[:, i]
+            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            for j in range(nqG1):
+                qG = ind_qG_to_vec[j]
+                FFTBox[round(qG[0]), round(qG[1]), round(qG[2])] = chi0GG2[j]
+            FFT = np.fft.ifftn(FFTBox)
+            chi0rG[:, i]= np.reshape(FFT, fftboxsize)
+        #Seconde FFT:
+        chi0rr = np.zeros((fftboxsize, n1, n2, n3), dtype = complex)
+        print("Starting second FFT")
+        for i in range(fftboxsize):
+            chi0r1G = chi0rG[i, :]
+            FFTBox = np.zeros((n1, n2, n3), dtype = complex)
+            for j in range(nqG2):
+                qG = ind_qG_to_vec[j]
+                FFTBox[-round(qG[0]), -round(qG[1]), -round(qG[2])] = chi0r1G[j]
+            FFT = np.fft.ifftn(FFTBox)  
+            chi0rr[i] = FFT
+        chi0rr_out0 = np.reshape(chi0rr, (n1, n2, n3, n1, n2, n3))
+        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
+        return chi0rr_out  """
