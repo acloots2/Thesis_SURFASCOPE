@@ -308,11 +308,16 @@ def Build_Chi0GG(filename, opt, omega = 0):
         start_time = time.time()
         structure = abipy.core.structure.Structure.from_file(filename)
         Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
+        dict_struct = structure.to_abivars()
+        natom = dict_struct["natom"]
         SymRec = Sym.symrec
+        print(len(SymRec))
+        #Trec = Sym.tnons
         nsym = len(SymRec)
+        #nsym = round(len(SymRec)/natom)
         nk = fsk(kpoints)
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ. Needs to pay attention to rounding errors+needs to use Umklapp vectors to get all the data
-
+        #print(Trec)
         vec_q_to_ind, ind_q_to_vec, sym_dict = {},{},{}
         ind = 0
         for i in range(nsym):
@@ -344,6 +349,8 @@ def Build_Chi0GG(filename, opt, omega = 0):
                             ind+=1
                 else:
                     continue
+        print(len(ind_q_to_vec))
+        print(ind_q_to_vec)
         #Verification de l'inclusion de la symétrie d'inversion
         invsym_bool = IsInvSymIn(SymRec, nsym)
         if invsym_bool==False:
@@ -366,7 +373,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
             G_vec = np.round(np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk))
             vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
             ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
-        
+        print(ng)
         #Listes des vecteurs qibz+G et qbz+G (dictionnaire + tableau)
         vec_qibzG_to_ind = {}
         ind_qibzG_to_vec = {}
@@ -432,7 +439,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         
         #Settings for the building of chi0GG
                
-        print("Dict of symmetry initialized")
+        #print("Dict of symmetry initialized")
 
         s1, s2, s3 = np.amax(np.abs(vec_table_without_border[:, 0])), np.amax(np.abs(vec_table_without_border[:, 1])), np.amax(np.abs(vec_table_without_border[:, 2]))
         n1, n2, n3=(2*s1)+1, (2*s2)+1, (2*s3)+1
@@ -472,11 +479,14 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 else:
                     vec_from_sym[(SqG[0], SqG[1], SqG[2])] = np.array([j])
                 sym_to_vec[((SqG[0], SqG[1], SqG[2]), j)] = vec_qibzG_to_ind[qG_vec]
+        print("Sym ok")
         #print(vec_from_sym)
         count = 0
         ind_pairqG_to_pair = {}
         #item_to_loc = {}
+        
         for q_vec in vec_q_to_ind.keys():
+            print(q_vec)
             for G1_vec in vec_G_to_ind.keys():
                 qG1_vec = (q_vec[0]+G1_vec[0], q_vec[1]+G1_vec[1], q_vec[2]+G1_vec[2])
                 for G2_vec in vec_G_to_ind.keys():
@@ -491,7 +501,12 @@ def Build_Chi0GG(filename, opt, omega = 0):
                         #item_to_loc[count] = 
                         #print(intersection_as_list)
                         count+=1
-        
+        """ ic = complex(0, 1)
+            t = Trec[S]
+            G1 = ind_G_to_vec[j]
+            G1_vec = np.array([G1[0], G1[1], G1[2]])
+            G2 = ind_G_to_vec[k]
+            G2_vec = np.array([G2[0], G2[1], G2[2]]) """
         for (i, j, k) in ind_pairqG_to_pair.keys():
             qG1_vec, qG2_vec, S = ind_pairqG_to_pair[(i, j, k)]
             ind_qibzG1, ind_qibzG2 = sym_to_vec[(qG1_vec, S)], sym_to_vec[(qG2_vec, S)]
@@ -499,7 +514,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
             ind_sm_chi021,  ind_sm_chi022= round((ind_qibzG1-ind_sm_chi011)/ng), round((ind_qibzG2-ind_sm_chi012)/ng)
             if ind_sm_chi021 != ind_sm_chi022:
                 print("Strange")
-            chi0GG[i, j, k] = smallchi0GG[ind_sm_chi021, ind_sm_chi011,  ind_sm_chi012]        
+            chi0GG[i, j, k] = smallchi0GG[ind_sm_chi021, ind_sm_chi011,  ind_sm_chi012]#*cmath.exp(ic*np.dot(t, G2_vec-G1_vec))
         elapsed_3 = time.time()-(elapsed_2+elapsed_1+start_time)
         print("the building of chi0GG took ", elapsed_3, "seconds")
         return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
@@ -690,6 +705,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
                             if o != q:
                                 print("Strange2")
                             chi0GG[o, p, r] = smallchi0GG[i, j, k]
+        return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
     else:
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
 
@@ -834,6 +850,7 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
         return chi0rr_out
 
     elif opt2 == "Kaltak":
+        start_time = time.time()
         nq, ng1, ng2 = chi0GG.shape
         if ng1 != ng2:
             return "There is a problem in the code"
@@ -871,7 +888,8 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
                 FFT_out = np.multiply(FFT, phase_fac)
                 #add phase factor
                 chi0rG[i, :, j]= np.reshape(FFT_out, fftboxsizeG)
-
+        elapsed1 = time.time()-start_time
+        print("The first FFT took ", elapsed1, " seconds")
         # Seconde FFT
         print("Starting second FFT")
         chi0rr = np.zeros((fftboxsizeG, n1_fft, n2_fft, n3_fft), dtype = complex)
@@ -887,6 +905,8 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
             chi0rr[i, :, :, :]=FFT
         chi0rr_out0 = np.reshape(chi0rr, (n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft))
         chi0rr_out = chi0rr_out0 * chi0rr_out0.size
+        elapsed2 = time.time()-start_time-elapsed1
+        print("The second FFT took ", elapsed2, " seconds")
         return chi0rr_out
           
     else:
