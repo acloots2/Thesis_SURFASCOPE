@@ -1,0 +1,75 @@
+###Computation of chi0 of slab of 13 layers aluminium
+
+### Ground state of Al ###
+
+###Convergence cycles
+ndtset 2
+
+###Definition of the FCC Cell
+acell 3*7.626142746433883 #Scaling of the primitive vector in Bohr
+chkprim 0
+rprim 0.5 -0.5 0 #Primitive vector to construct the unit cell
+0.5 0.5 0
+0   0  5
+
+
+
+
+###One aluminium atom per unit cell in (0 0 0)
+natom 5         #13 layers
+ntypat 1        # only one type of atom
+znucl 13        #The atoms are aluminium
+typat 1 1 1 1 1        #The atoms are of type 1 which is aluminium
+
+xcart 0 0 0     #the only atom is positionned in 0 0 0 Bohr
+0 3.8130713732169417 3.8130713732169417
+0 0 7.626142746433883
+0 3.8130713732169417 -3.8130713732169417
+0 0 -7.626142746433883
+
+
+###Definition of the kpt grid
+kptopt 1        #Uses symmetry of the problem to generate a grid in the IBZ
+                # from the variable ngkpt or kptrlatt and  shiftk and nshiftk
+ngkpt 6 6 1      #Already quite a big grid
+
+nshiftk 1       #4 shifts with the usual shifts for FCC lattice
+shiftk 0 0 0
+###Convergence criterion and plane wave basis set
+ecut 15          #small ecut [Hartree] for starting the computations
+nstep 500
+dipdip 0
+
+#Band occupation
+occopt 4
+tsmear 0.04
+autoparal 1
+#Cell optimisation
+
+#optcell 2
+#ionmov 2
+#ntime 15
+#ecutsm 0.5
+#dilatmx 1.05
+
+ixc 11
+tolsym 1e-08
+istwfk  *1 
+
+############
+# Dataset 1
+############
+# SCF-GS run 
+tolvrs 1.0e-10
+prtden 1
+
+############ Dataset 2 ########## Definition of parameters for the
+# calculation of the WFK file 
+nband2 700 # Number of (occ and empty) bands to be computed 
+nbdbuf2 100 
+iscf2 -2 
+getden2 -1 
+tolwfr2 1.0d-18
+prtvol 5
+# ## Will stop when this tolerance is achieved
+

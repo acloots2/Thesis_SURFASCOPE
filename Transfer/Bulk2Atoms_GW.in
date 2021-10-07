@@ -1,0 +1,68 @@
+###Computation of chi0 of slab of 13 layers aluminium
+
+### Ground state of Al ###
+
+###Convergence cycles
+ndtset 1
+
+###Definition of the FCC Cell
+acell 3*7.626142746433883 #Scaling of the primitive vector in Bohr
+chkprim 0
+rprim 0.5 -0.5 0 #Primitive vector to construct the unit cell
+0.5 0.5 0
+0   0  1
+
+
+
+
+###One aluminium atom per unit cell in (0 0 0)
+natom 2         #13 layers
+ntypat 1        # only one type of atom
+znucl 13        #The atoms are aluminium
+typat 1 1        #The atoms are of type 1 which is aluminium
+#
+xred 0 0 0     #the only atom is positionned in 0 0 0 Bohr
+0.5 0.5 0.5
+#
+#
+####Definition of the kpt grid
+kptopt 1        #Uses symmetry of the problem to generate a grid in the IBZ
+#                # from the variable ngkpt or kptrlatt and  shiftk and nshiftk
+ngkpt 6 6 6      #Already quite a big grid
+#
+nshiftk 1       #4 shifts with the usual shifts for FCC lattice
+shiftk 0 0 0
+#                ###Convergence criterion and plane wave basis set
+ecut 15          #small ecut [Hartree] for starting the computations
+nstep 500
+
+
+#Band occupation
+occopt 4
+tsmear 0.04
+
+#Cell optimisation
+
+#optcell 2
+#ionmov 2
+#ntime 15
+#ecutsm 0.5
+#dilatmx 1.05
+
+ixc 11
+tolsym 1e-08
+istwfk  *1 
+
+optdriver  3        # Screening calculation
+getwfk 2           # Obtain WFK file from previous dataset
+nband     250      # Bands to be used in the screening calculatio
+ecuteps  8      # Cut-off energy of the planewave set to represent the dielectric matrix. 
+                # It is important to adjust this parameter.
+ppmfrq    16.7 eV   # Imaginary frequency where to calculate the screening
+prtsuscep 1         # Print \chi0
+iomode 3
+gwcalctyp 2
+nfreqim 3
+nfreqre 3
+freqremax 1.
+gwpara 1
