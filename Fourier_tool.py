@@ -80,7 +80,7 @@ def FindSmallerKpoint(kpoints):
         A=False
     if kpoints_tab2.size==0:
         mk2=0
-        nk1=1
+        nk2=1
         B=False
     if kpoints_tab3.size==0:
         mk3=0

@@ -10,6 +10,131 @@ from scipy.interpolate import RegularGridInterpolator
 import plotly.graph_objects as go
 import time
 
+#Build the matrix chi0(z, z') from chi0(r, r')
+def chi0Comp(chi0rr, x, y, axe = "001"):
+    d1, d2, d3, d4, d5, d6 = chi0rr.shape
+    if axe == "001":
+        chi0zz = np.zeros((d3, d6), dtype = complex)
+        for i in range(d3):
+            chi0zz[i, :] = chi0rr[x, y, i, x, y, :]
+        return chi0zz
+    if axe == "010":
+        chi0zz = np.zeros((d2, d5), dtype = complex)
+        for i in range(d2):
+            chi0zz[i, :] = chi0rr[x, i, y, x, :, y]
+        return chi0zz
+    if axe == "001":
+        chi0zz = np.zeros((d1, d4), dtype = complex)
+        for i in range(d1):
+            chi0zz[i, :] = chi0rr[i, x, y, :, x, y]
+        return chi0zz
+
+def CenterChi0(chi0zz):
+    d1, d2 = chi0zz.shape
+    count = 0
+    if d1%2 != 0:
+        chi0zz_out = np.zeros((d1, d2), dtype = complex)
+        for i in range(d1):
+            if i <= math.floor(d1/2):
+                chi0zz_out[i, :] = Rev_vec(chi0zz[i, :])
+            else:
+                arr = Rev_vec(chi0zz[i-count-1, :])
+                count+=2
+                arr_out = arr[::-1]
+                chi0zz_out[i, :] = arr_out
+    else:
+        chi0zz_out = np.zeros((d1, d2), dtype = complex)
+        for i in range(d1):
+            if i <= math.floor(d1/2):
+                chi0zz_out[i, :] = Rev_vec(chi0zz[i, :])
+            else:
+                arr = Rev_vec(chi0zz[i-count-2, :])
+                count+=2
+                arr = arr[::-1]
+                chi0zz_out[i, :] = arr
+    for j in range(d2):
+        chi0zz_out[:, j] = Rev_vec(chi0zz_out[:, j])
+    return chi0zz_out
+
+
+
+        
+#Build the matrix for the larger slab from second principles
+def LargeChi0(chi0zzB, chi0zzS):
+    #Model 1: set to 0 if no data available
+    db1, db2 = chi0zzB.shape
+    ds1, ds2 = chi0zzS.shape
+    chi0zzB = CenterChi0(chi0zzB)
+    chi0zzS = CenterChi0(chi0zzS)
+    d = db2+ds2-2
+    chi0zz = np.zeros((d, d), dtype = complex)
+    for i in range(round(ds1/2)-1):
+        chi0zz[i, 0:ds2] = chi0zzS[i, :]
+    count = 0
+    for i in range(round(ds1/2), d-round(ds1/2)):
+        a = round(ds1/2)+round(db1/2)+round(db1*((count-count%db1)/db1))-round(db2/2)
+        b = a+db2
+        chi0zz[i, a:b] = chi0zzB[count%db1, :]
+        count+=1
+    count = 1
+    for i in range(d-round(ds1/2)+1,d):
+        chi0zz[d-count, d-ds2:d] = chi0zzS[ds2-(i-d+round(ds1/2))-1, :]
+        count+=1
+    return chi0zz
+    
+#r'$\chi^0(\boldymbol{r}, \boldsymbol{r\'})$' + 'with' + r'$\boldymbol{r}$' +'='+str([0, 0, 0])+' for different directions'
+def getProfile(chi0rr, R, a, b, c, nc, axe = "100"):
+    fig = go.Figure()
+    n1, n2, n3, n4, n5, n6 = chi0rr.shape
+    Rreal = np.round(np.multiply(np.array(R)/np.array([n1, n2, n3]), [a, b, c]), 3)
+    if axe == "100":
+        if n4%2==0:
+            endpoint = False
+        else:
+            endpoint = True
+        X = np.linspace(-a/2, a/2, n4,endpoint = endpoint)
+        Y = Rev_vec(np.real(chi0rr[R[0], R[1], R[2], :, R[1], R[2]]))
+    elif axe == "010":
+        if n5%2==0:
+            endpoint = False
+        else:
+            endpoint = True
+        X = np.linspace(-b/2, b/2, n5,endpoint = endpoint)
+        Y = Rev_vec(np.real(chi0rr[R[0], R[1], R[2], R[0], :, R[2]]))
+    elif axe == "001":
+        if n6%2==0:
+            endpoint = False
+        else:
+            endpoint = True
+        X = np.linspace(-c/2, c/2, n6, endpoint = endpoint)
+        Y = Rev_vec(np.real(chi0rr[R[0], R[1], R[2], R[0], R[1], :]))
+    else:
+        print("This possibility is not available yet, please select among the following : 100, 010 or 001")
+    xtitle = r'$\boldsymbol{r}_2 \text{ on the axis parallel to }['+axe+ r'] \text{ and passing by the point }['+str(Rreal[0])+r', '+str(Rreal[1])+r', '+str(Rreal[2])+ r'] \text{\AA} $'
+    fig.add_trace(go.Scatter(x = X, y = np.real(Y), mode = "lines+markers",marker=dict(
+            color='slategrey',
+            size=10,
+        ),))
+    fig.update_layout(title_text = r'$\chi^0(\boldsymbol{r}_1, \boldsymbol{r}_2) \text{ with } \boldsymbol{r}_1 = ['+str(Rreal[0])+r', '+str(Rreal[1])+r', '+str(Rreal[2])+ r'] \text{ angstrom}$', title_x=0.5,xaxis_title= xtitle,
+             yaxis_title = r'$\chi^0(\boldsymbol{r}_1, \boldsymbol{r}_2)$',paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
+    fig.show(dpi = 300)
+
+def diff_bulk_Slab(chi0rrB, chi0rrS, nc, dr, cut = 0, plan = "xz"):
+    charge_cut_b = charge_accul_cut(chi0rrB, dr, plan, cut)
+    charge_cut_s = charge_accul_cut(chi0rrS, dr, plan, cut)
+    nb1, nb2 = charge_cut_b.shape
+    ns1, ns2 = charge_cut_s.shape
+    nc1, nc2 = round(ns1/nb1), round(ns2/nb2)
+    charge_cut_b = charge_cut_b[0:nb1-1, 0:nb2-1]
+    nb1, nb2 = charge_cut_b.shape
+    charge_cut_diff = np.zeros((ns1, ns2), dtype = complex)
+    for i in range(nc1):
+        for j in range(nc2):
+            charge_cut_diff[i*nb1:(i+1)*nb1, j*nb2:(j+1)*nb2] = charge_cut_b
+    charge_cut_diff = charge_cut_s-charge_cut_diff
+    return charge_cut_diff
+        
+
 
 def getDen(filename, nx, nz):
     dataDEN = np.genfromtxt(filename)
@@ -49,10 +174,10 @@ def getDen(filename, nx, nz):
 
     fig.show(dpi = 300)
 
-def Rev_vec(Y, pair = True):
+def Rev_vec(Y):
     l1 = Y.size
-    Y_out = np.zeros((l1))
-    if pair==True:
+    Y_out = np.zeros((l1), dtype = complex)
+    if l1%2==0:
         l2 = math.floor(l1/2)
         Y_out[0:l2] = Y[l2:l1]
         Y_out[l2:l1] = Y[0:l2]
@@ -110,86 +235,116 @@ def charge_accul_cut(chi0rr, dr, plan, cut):
     print("Max charge accumulation = ", np.amax(np.abs(np.real(charge_cut))))
     return charge_cut
 
-def Sym_chi0GG(filename, omega = 0):
-    sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
-    structure = abipy.core.structure.Structure.from_file(filename)
-    Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
-    #dict_struct = structure.to_abivars()
-    SymRec = Sym.symrec
-    print(len(SymRec))
-        #Trec = Sym.tnons
-    nsym = len(SymRec)
-        #nsym = round(len(SymRec)/natom)
-    nk = fsk(kpoints)
-    vec_q_to_ind, ind_q_to_vec, sym_dict = {},{},{}
-    ind = 0
-    qibzvec_to_ind  = {}
-    for i in range(nkpt):
-        q = np.round(np.multiply(kpoints[i].frac_coords, nk))
-        qibzvec_to_ind[(q[0], q[1], q[2])] = i
-    for i in range(nsym):
-        for j in range(nkpt):
-            q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords), 3)#+TRec[i]
-            if np.amax(q) > 0.5 or np.amin(q) <= - 0.5:
-                a, b, c = q[0], q[1], q[2]
-                if q[0]>0.5:
-                    a=round(q[0]-1,3)
-                elif q[0]<=-0.5:
-                    a=round(q[0]+1,3)
-                if q[1]>0.5:
-                    b=round(q[1]-1,3)
-                elif q[1]<=-0.5:
-                    b=round(q[1]+1,3)
-                if q[2]>0.5:
-                    c=round(q[2]-1,3)
-                elif q[2]<=-0.5:
-                    c=round(q[2]+1,3)
-                q_in_bz = (a, b, c)
-            else:
-                q_in_bz = (q[0], q[1], q[2])
-                #print(q_in_bz)
-            q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
-            if (q_vec[0], q_vec[1], q_vec[2]) not in vec_q_to_ind.keys():
-                        ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
-                        vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
-                        sym_dict[ind] = (i, j, (0, 0))
-                        ind+=1
-            else:
-                continue
-    nq = len(sym_dict)
-        #Liste des vecteurs G
-    vec_G_to_ind = {}
-    ind_G_to_vec = {}
-    for i in range(ng):
-        G_vec = np.round(np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk))
-        vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
-        ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
-        #print(ng)
-        #Listes des vecteurs qibz+G et qbz+G (dictionnaire + tableau)
-    vec_qibzG_to_ind = {}
-    ind_qibzG_to_vec = {}
-    vec_qbzG_to_ind = {}
-    ind_qbzG_to_vec ={}
+def getChargeInBox_centered(charge_cut_raw, a, b, c, opt = "xz"):
+    l1, l2 = charge_cut_raw.shape
+    charge_cut_inter = np.zeros((l1-1, l2-1), dtype = complex)
+    for i in range(l1-1):
+        charge_cut_inter[i]=Rev_vec(charge_cut_raw[i, 0:l2-1])
+    for j in range(l2-1):
+        charge_cut_inter[:, j] = Rev_vec(charge_cut_inter[0:l1-1, j])
+    if l1%2==0 and l2%2==0:
+        charge_cut = np.zeros((l1-1, l2-1), dtype = complex)
+        charge_cut = charge_cut_inter
+        l1-=l1
+        l2-=l2
+    elif l1%2==1 and l2%2==0:
+        charge_cut = np.zeros((l1, l2-1), dtype = complex)
+        charge_cut[0:l1-1, 0:l2-1] = charge_cut_inter
+        charge_cut[l1-1, :] = charge_cut[0, :]
+        l2-=l2
+    elif l1%2==0 and l2%2==1:
+        charge_cut = np.zeros((l1-1, l2), dtype = complex)
+        charge_cut[0:l1-1, 0:l2-1] = charge_cut_inter
+        charge_cut[:, l2-1] = charge_cut[:, 0]
+        l1-=l1
+    else:
+        charge_cut = np.zeros((l1, l2), dtype = complex)
+        charge_cut[0:l1-1, 0:l2-1] = charge_cut_inter
+        charge_cut[l1-1, :] = charge_cut[0, :]
+        charge_cut[:, l2-1] = charge_cut[:, 0]
+    if opt == "xz":
+        s1 = c
+        s2 = a
+        xaxis_title="z"
+        yaxis_title="x"
+    elif opt == "xy":
+        s1 = b
+        s2 = a
+        xaxis_title="y"
+        yaxis_title="x"
+    elif opt == "yz":
+        s1 = c
+        s2 = b
+        xaxis_title="z"
+        yaxis_title="y"
+    else:
+        print("Not a valid option, please select one among the following : xz, xy, yz")
+    fig = go.Figure(data = go.Contour(z = np.real(charge_cut), x = np.linspace(-s1/2, s1/2, l2), y = np.linspace(-s2/2, s2/2, l1), colorscale='sunset', ncontours = 20,  line_smoothing=0.85, contours_coloring='heatmap', colorbar=dict(title='Amount of charge',)))
+    fig.update_layout(
+        title_text="Sum of the charge in a box center around the point shown in the "+opt+" plane of the unit cell",
+        xaxis_title=xaxis_title,
+        yaxis_title=yaxis_title,
+        autosize=False,
+        width=600*c/a,
+        height=600,
+        )
+    fig.show(dpi = 300)
 
-    for i in range(nkpt):
-        for j in range(ng):
-            kpt = kpoints[i].frac_coords
-            G_vec = G[j]
-            qG = np.round(np.multiply([kpt[0]+G_vec[0], kpt[1]+G_vec[1], kpt[2]+G_vec[2]], nk))
-            vec_qibzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
-            ind_qibzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
-        
-    nqibzG = nkpt*ng
-    vec_table = np.zeros((nq*ng, 3))
-    for i in range(nq):
-        q = ind_q_to_vec[i]
-        for j in range(ng):
-            G_vec = ind_G_to_vec[j]
-            qG = np.round([q[0]+G_vec[0], q[1]+G_vec[1], q[2]+G_vec[2]])
-            vec_qbzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
-            ind_qbzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
-            vec_table[j+i*ng] = qG
+def getChargeInBox(charge_cut, a, b, c, opt = "xz"):
+    l1, l2 = charge_cut.shape
+    if opt == "xz":
+        s1 = c
+        s2 = a
+    elif opt == "xy":
+        s1 = b
+        s2 = a
+    elif opt == "yz":
+        s1 = c
+        s2 = b
+    else:
+        print("Not a valid option, please select one among the following : xz, xy, yz")
+    fig = go.Figure(data = go.Contour(z = np.real(charge_cut), x = np.linspace(-s1/2, s1/2, l2), y = np.linspace(-s2/2, s2/2, l1), colorscale='sunset', line_smoothing=0.85, contours_coloring='heatmap'))
+    fig.update_layout(
+        autosize=False,
+        width=600*c/a,
+        height=600,
+        )
+    fig.show(dpi = 300)
 
+def getChi0cut(chi0rr, R, a, b, c, nc, cut = 0,  opt = "xz"):
+    l1, l2, l3 = chi0rr[R[0], R[1], R[2], :, :, :].shape
+    if opt == "xz":
+        s1 = c*nc[2]
+        s2 = a*nc[0]
+        d1 = l3
+        d2 = l1
+        chi_cut = chi0rr[R[0], R[1], R[2], :, cut, :]
+        print(chi_cut.shape)
+        print(d1, d2)
+    elif opt == "xy":
+        s1 = b*nc[1]
+        s2 = a*nc[0]
+        d1 = l2
+        d2 = l1
+        chi_cut = chi0rr[R[0], R[1], R[2], :, :, cut]
+    elif opt == "yz":
+        s1 = c*nc[2]
+        s2 = b*nc[1]
+        d1 = l3
+        d2 = l2
+        chi_cut = chi0rr[R[0], R[1], R[2], cut, :, :]
+    else:
+        print("Not a valid option, please select one among the following : xz, xy, yz")
+    fig = go.Figure(data = go.Contour(z = np.real(chi_cut), x = np.linspace(-s1/2, s1/2, d1), y = np.linspace(-s2/2, s2/2, d2), colorscale='sunset', line_smoothing=0.85, contours_coloring='heatmap'))
+    fig.update_layout(
+        autosize=False,
+        width=600*s1/s2,
+        height=600,
+        )
+    fig.show(dpi = 300)
+
+def Sym_chi0GG(sus_ncfile, kpoints, ng, nkpt, G, SymRec, nsym, ind_q_to_vec, ind_G_to_vec, qibzvec_to_ind, vec_G_to_ind, vec_qibzG_to_ind, ind_qibzG_to_vec, nk, omega):
+    # Function that symmetrizes the chi^0GG output of Abinit such that two symmetric values have exactly the same values
     smallchi0GG = np.zeros((nkpt, ng, ng), dtype = complex)
     for i in range(nkpt):
             q_origin = kpoints[i]
@@ -197,6 +352,7 @@ def Sym_chi0GG(filename, omega = 0):
             smallchi0GG[i] = chi0[omega]
 
     chi0GGsym = np.zeros((nkpt, ng, ng), dtype = complex)
+    #Dictionnary to store all the q, G, G' set already treated
     comb_vec = {}
     for i in range(nkpt):
         q = ind_q_to_vec[i]
@@ -209,6 +365,7 @@ def Sym_chi0GG(filename, omega = 0):
                 G2vec = [G2[0], G2[1], G2[2]]
                 if (i, j, k) not in comb_vec.keys():
                     sum_chi = 0
+                    #Dictionnary to store all the symmetrical q,G,G' sets
                     sym_vec = {}
                     count = 0
                     for l in range(nsym):
@@ -216,8 +373,32 @@ def Sym_chi0GG(filename, omega = 0):
                         Sq = np.matmul(S, qvec)
                         SG1 = np.matmul(S, G1vec)
                         SG2 = np.matmul(S, G2vec)
-                        if (Sq[0], Sq[1], Sq[2]) in qibzvec_to_ind.keys() and (SG1[0], SG1[1], SG1[2]) in vec_G_to_ind.keys() and (SG2[0], SG2[1], SG2[2]) in vec_G_to_ind.keys():
-                            indq = vec_q_to_ind[(Sq[0], Sq[1], Sq[2])]
+                        SqG1 = Sq + SG1
+                        SqG2 = Sq + SG2
+                        if (SqG1[0], SqG1[1], SqG1[2]) in vec_qibzG_to_ind.keys() and (SqG2[0], SqG2[1], SqG2[2]) in vec_qibzG_to_ind.keys():
+                            Sq = Sq/nk
+                            if np.amax(q) > 0.5 or np.amin(q) <= - 0.5: #if out of BZ ==> Umklapp
+                                a, b, c = Sq[0], Sq[1], Sq[2]
+                                if Sq[0]>0.5:
+                                    a=round(Sq[0]-1,3)
+                                elif Sq[0]<=-0.5:
+                                    a=round(Sq[0]+1,3)
+                                if Sq[1]>0.5:
+                                    b=round(Sq[1]-1,3)
+                                elif Sq[1]<=-0.5:
+                                    b=round(Sq[1]+1,3)
+                                if Sq[2]>0.5:
+                                    c=round(Sq[2]-1,3)
+                                elif Sq[2]<=-0.5:
+                                    c=round(Sq[2]+1,3)
+                                Sq_in_bz = (a, b, c)
+                                Sq_in_bz = np.round(np.multiply(Sq_in_bz, nk))
+                                SG1 = SqG1 - Sq_in_bz
+                                SG2 = SqG2 - Sq_in_bz
+                            else:
+                                Sq_in_bz = (q[0], q[1], q[2])
+                                Sq_in_bz = np.round(np.multiply(Sq_in_bz, nk))
+                            indq = qibzvec_to_ind[(Sq_in_bz[0], Sq_in_bz[1], Sq_in_bz[2])]
                             indG1 = vec_G_to_ind[(SG1[0], SG1[1], SG1[2])]
                             indG2 = vec_G_to_ind[(SG2[0], SG2[1], SG2[2])]
                             sum_chi += smallchi0GG[indq, indG1, indG2]
@@ -225,16 +406,24 @@ def Sym_chi0GG(filename, omega = 0):
                             comb_vec[(indq, indG1, indG2)] = 0
                             count += 1
                     mean = sum_chi/count
+                    #Replacement off all the values in the set by the mean of all the values
                     for (m, n, o) in sym_vec.keys():
                         chi0GGsym[m, n, o] = mean
     return chi0GGsym
 
+
 def Build_Chi0GG(filename, opt, omega = 0):
     sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
+    structure=abipy.core.structure.Structure.from_file(filename)
+    dict_struct = structure.to_abivars()
+    lattice = structure.lattice.matrix
+    A, B, C = lattice[0], lattice[1], lattice[2]
+    nk = fsk(kpoints)
+    vol = np.dot(A, (np.cross(B, C)))*nk[0]*nk[1]*nk[2]
+    print("Opening the file" , filename, "containing a matrix chi^0[q, G, G'] with ", nkpt, "q points in the IBZ and ", ng, "G vectors")
     if opt == 'FullBZ':
         nvec = nkpt*ng
         print(nkpt, ng, nvec)
-        nk = fsk(kpoints)
         #Creation des dictionnaires : il en faut 1 pour aller des indices vers les vecteurs et un pour aller des vecteurs vers les indices. Les composant sont scale selon le nombre 
         # le sampling de la BZ (ex : le vecteur [c0, c1, c2] est référencé à (c0*ngkpt[0], c1*ngkpt[1], c2*ngkpt[2])) de manière à ce qu'ils puissent être utilisé comme indices dans les matrices.
         vec_qG_to_ind = {}
@@ -314,21 +503,25 @@ def Build_Chi0GG(filename, opt, omega = 0):
         structure = abipy.core.structure.Structure.from_file(filename)
         Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
         dict_struct = structure.to_abivars()
-        #natom = dict_struct["natom"]
         SymRec = Sym.symrec
-        print(len(SymRec))
-        #Trec = Sym.tnons
         nsym = len(SymRec)
-        #nsym = round(len(SymRec)/natom)
+        print("The algorithm will use ", nsym, "symmetries to build the matrix chi^0[q, G, G'] with q in the BZ")
+
+        #Value used to scale all the points in order to have only integers
         nk = fsk(kpoints)
+
+        qibzvec_to_ind  = {}
+        for i in range(nkpt):
+            q = np.round(np.multiply(kpoints[i].frac_coords, nk))
+            qibzvec_to_ind[(q[0], q[1], q[2])] = i
+
         #Obtenir tout les q-points dans la BZ depuis ceux dans l'IBZ. Needs to pay attention to rounding errors+needs to use Umklapp vectors to get all the data
-        #print(Trec)
         vec_q_to_ind, ind_q_to_vec, sym_dict = {},{},{}
         ind = 0
         for i in range(nsym):
             for j in range(nkpt):
                 q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords), 3)#+TRec[i]
-                if np.amax(q) > 0.5 or np.amin(q) <= - 0.5:
+                if np.amax(q) > 0.5 or np.amin(q) <= - 0.5: #if out of BZ ==> Umklapp
                     a, b, c = q[0], q[1], q[2]
                     if q[0]>0.5:
                         a=round(q[0]-1,3)
@@ -345,17 +538,16 @@ def Build_Chi0GG(filename, opt, omega = 0):
                     q_in_bz = (a, b, c)
                 else:
                     q_in_bz = (q[0], q[1], q[2])
-                #print(q_in_bz)
                 q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
                 if (q_vec[0], q_vec[1], q_vec[2]) not in vec_q_to_ind.keys():
                             ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
                             vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
+                            # Dict linking the index of the nth qpoint to the qibz and the symmetry required to obtain it
                             sym_dict[ind] = (i, j, (0, 0))
                             ind+=1
                 else:
                     continue
-        #print(len(ind_q_to_vec))
-        #print(ind_q_to_vec)
+
         #Verification de l'inclusion de la symétrie d'inversion
         invsym_bool = IsInvSymIn(SymRec, nsym)
         if invsym_bool==False:
@@ -378,7 +570,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
             G_vec = np.round(np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk))
             vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
             ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
-        #print(ng)
+    
         #Listes des vecteurs qibz+G et qbz+G (dictionnaire + tableau)
         vec_qibzG_to_ind = {}
         ind_qibzG_to_vec = {}
@@ -386,10 +578,10 @@ def Build_Chi0GG(filename, opt, omega = 0):
         ind_qbzG_to_vec ={}
 
         for i in range(nkpt):
+            kpt = kpoints[i].frac_coords
             for j in range(ng):
-                kpt = kpoints[i].frac_coords
                 G_vec = G[j]
-                qG = np.round(np.multiply([kpt[0]+G_vec[0], kpt[1]+G_vec[1], kpt[2]+G_vec[2]], nk))
+                qG = np.round(np.multiply(kpt+G_vec, nk))
                 vec_qibzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
                 ind_qibzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
         
@@ -435,20 +627,20 @@ def Build_Chi0GG(filename, opt, omega = 0):
                     ind_qGrot_to_vec[count] = (qG_rot[0], qG_rot[1], qG_rot[2])
                     count += 1
 
-    
+        
         nvec = len(vec_qbzG_to_ind) 
-        vec_table_without_border = np.zeros((nvec, 3), dtype=int)
+        vec_table_with_border = np.zeros((nvec, 3), dtype=int)
         for i in range(nvec):
             qG = ind_qbzG_to_vec[i]
-            vec_table_without_border[i] = [qG[0], qG[1], qG[2]]
+            vec_table_with_border[i] = [qG[0], qG[1], qG[2]]
         
+
         #Settings for the building of chi0GG
                
         #print("Dict of symmetry initialized")
 
-        s1, s2, s3 = np.amax(np.abs(vec_table_without_border[:, 0])), np.amax(np.abs(vec_table_without_border[:, 1])), np.amax(np.abs(vec_table_without_border[:, 2]))
+        s1, s2, s3 = np.amax(np.abs(vec_table_with_border[:, 0])), np.amax(np.abs(vec_table_with_border[:, 1])), np.amax(np.abs(vec_table_with_border[:, 2]))
         n1, n2, n3= (2*s1)+1, (2*s2)+1, (2*s3)+1
-        print(n1, n2, n3)
         elapsed_1 = time.time()-start_time
         print("the initialization of the dictionnaries and gathering of the information about the valid vectors took", elapsed_1, "seconds")
         chi0GG = np.zeros((nq, ng, ng), dtype = complex)
@@ -458,7 +650,8 @@ def Build_Chi0GG(filename, opt, omega = 0):
             q_origin = kpoints[i]
             chi0 = sus_ncfile.reader.read_wggmat(q_origin).wggmat
             smallchi0GG[i] = chi0[omega] """
-        smallchi0GG = Sym_chi0GG(filename, omega)
+        smallchi0GG = Sym_chi0GG(sus_ncfile, kpoints, ng, nkpt, G, SymRec, nsym, ind_q_to_vec, ind_G_to_vec, qibzvec_to_ind, vec_G_to_ind, vec_qibzG_to_ind, ind_qibzG_to_vec, nk, omega)
+        #smallchi0GG = Sym_chi0GG(filename, omega)
 
         for i in range(nkpt):
             q_vec = ind_q_to_vec[i]
@@ -485,7 +678,6 @@ def Build_Chi0GG(filename, opt, omega = 0):
                 else:
                     vec_from_sym[(SqG[0], SqG[1], SqG[2])] = np.array([j])
                 sym_to_vec[((SqG[0], SqG[1], SqG[2]), j)] = vec_qibzG_to_ind[qG_vec]
-        print("Sym ok")
         #print(vec_from_sym)
         count = 0
         ind_pairqG_to_pair = {}
@@ -516,8 +708,8 @@ def Build_Chi0GG(filename, opt, omega = 0):
         for (i, j, k) in ind_pairqG_to_pair.keys():
             qG1_vec, qG2_vec, S = ind_pairqG_to_pair[(i, j, k)]
             ind_qibzG1, ind_qibzG2 = sym_to_vec[(qG1_vec, S)], sym_to_vec[(qG2_vec, S)]
-            ind_sm_chi011,  ind_sm_chi012= ind_qibzG1%ng, ind_qibzG2%ng
-            ind_sm_chi021,  ind_sm_chi022= round((ind_qibzG1-ind_sm_chi011)/ng), round((ind_qibzG2-ind_sm_chi012)/ng)
+            ind_sm_chi011,  ind_sm_chi012= ind_qibzG1%ng, ind_qibzG2%ng # Gind
+            ind_sm_chi021,  ind_sm_chi022= round((ind_qibzG1-ind_sm_chi011)/ng), round((ind_qibzG2-ind_sm_chi012)/ng) #qind
             if ind_sm_chi021 != ind_sm_chi022:
                 print("Strange")
             chi0GG[i, j, k] = smallchi0GG[ind_sm_chi021, ind_sm_chi011,  ind_sm_chi012]#*cmath.exp(ic*np.dot(t, G2_vec-G1_vec))
@@ -529,7 +721,7 @@ def Build_Chi0GG(filename, opt, omega = 0):
         chi0GG[0, :, 0] = np.zeros(ng)
         elapsed_3 = time.time()-(elapsed_2+elapsed_1+start_time)
         print("the building of chi0GG took ", elapsed_3, "seconds")
-        return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk
+        return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol
     
     else:
         return str(opt)+' is not a valid option, read the documentation to see the list of options'
@@ -743,7 +935,7 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
         print("The second option is not valid, see the function definition to know the different possibilities")
         return [0]
 
-def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_vec, ind_G_to_vec, G, nk, opt2 = "Kaltak"):
+def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak"):
     if opt2 == "Standard":
         nq, ng1, ng2 = chi0GG.shape
         if ng1 != ng2:
@@ -838,7 +1030,7 @@ def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_v
             FFT = np.fft.ifftn(FFTBox)  
             chi0rr[i, :, :, :]=FFT
         chi0rr_out0 = np.reshape(chi0rr, (n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft))
-        chi0rr_out = chi0rr_out0 * chi0rr_out0.size
+        chi0rr_out = chi0rr_out0 * chi0rr_out0.size/vol
         elapsed2 = time.time()-start_time-elapsed1
         print("The second FFT took ", elapsed2, " seconds")
         return chi0rr_out
@@ -1542,5 +1734,205 @@ def MatCharac(Matrr, MatGG, filename, input_filename, opt1 = 'FullBZ', opt2 = 'S
 
 
          """
+""" def Sym_chi0GG0(filename, omega = 0):
+    sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
+    structure = abipy.core.structure.Structure.from_file(filename)
+    Sym = abipy.core.symmetries.AbinitSpaceGroup.from_structure(structure)
+    #dict_struct = structure.to_abivars()
+    SymRec = Sym.symrec
+    print(len(SymRec))
+        #Trec = Sym.tnons
+    nsym = len(SymRec)
+        #nsym = round(len(SymRec)/natom)
+    nk = fsk(kpoints)
+    vec_q_to_ind, ind_q_to_vec, sym_dict = {},{},{}
+    ind = 0
+    qibzvec_to_ind  = {}
+    for i in range(nkpt):
+        q = np.round(np.multiply(kpoints[i].frac_coords, nk))
+        qibzvec_to_ind[(q[0], q[1], q[2])] = i
+        vec_qibz_to_ind[i] = (q[0], q[1], q[2])
+    for i in range(nsym):
+        for j in range(nkpt):
+            q = np.round(np.matmul(SymRec[i], kpoints[j].frac_coords), 3)#+TRec[i]
+            if np.amax(q) > 0.5 or np.amin(q) <= - 0.5:
+                a, b, c = q[0], q[1], q[2]
+                if q[0]>0.5:
+                    a=round(q[0]-1,3)
+                elif q[0]<=-0.5:
+                    a=round(q[0]+1,3)
+                if q[1]>0.5:
+                    b=round(q[1]-1,3)
+                elif q[1]<=-0.5:
+                    b=round(q[1]+1,3)
+                if q[2]>0.5:
+                    c=round(q[2]-1,3)
+                elif q[2]<=-0.5:
+                    c=round(q[2]+1,3)
+                q_in_bz = (a, b, c)
+            else:
+                q_in_bz = (q[0], q[1], q[2])
+                #print(q_in_bz)
+            q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
+            if (q_vec[0], q_vec[1], q_vec[2]) not in vec_q_to_ind.keys():
+                        ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
+                        vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
+                        sym_dict[ind] = (i, j, (0, 0))
+                        ind+=1
+            else:
+                continue
+    nq = len(sym_dict)
+        #Liste des vecteurs G
+    vec_G_to_ind = {}
+    ind_G_to_vec = {}
+    for i in range(ng):
+        G_vec = np.round(np.multiply([G[i, 0], G[i, 1], G[i, 2]], nk))
+        vec_G_to_ind[(G_vec[0], G_vec[1], G_vec[2])] = i
+        ind_G_to_vec[i] = (G_vec[0], G_vec[1], G_vec[2])
+        #print(ng)
+        #Listes des vecteurs qibz+G et qbz+G (dictionnaire + tableau)
+    vec_qibzG_to_ind = {}
+    ind_qibzG_to_vec = {}
+    vec_qbzG_to_ind = {}
+    ind_qbzG_to_vec ={}
 
-    
+    for i in range(nkpt):
+        for j in range(ng):
+            kpt = kpoints[i].frac_coords
+            G_vec = G[j]
+            qG = np.round(np.multiply([kpt[0]+G_vec[0], kpt[1]+G_vec[1], kpt[2]+G_vec[2]], nk))
+            vec_qibzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
+            ind_qibzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
+        
+    nqibzG = nkpt*ng
+    vec_table = np.zeros((nq*ng, 3))
+    for i in range(nq):
+        q = ind_q_to_vec[i]
+        for j in range(ng):
+            G_vec = ind_G_to_vec[j]
+            qG = np.round([q[0]+G_vec[0], q[1]+G_vec[1], q[2]+G_vec[2]])
+            vec_qbzG_to_ind[(qG[0], qG[1], qG[2])] = j+i*ng
+            ind_qbzG_to_vec[j+i*ng] = (qG[0], qG[1], qG[2])
+            vec_table[j+i*ng] = qG
+
+    smallchi0GG = np.zeros((nkpt, ng, ng), dtype = complex)
+    for i in range(nkpt):
+            q_origin = kpoints[i]
+            chi0 = sus_ncfile.reader.read_wggmat(q_origin).wggmat
+            smallchi0GG[i] = chi0[omega]
+
+    chi0GGsym = np.zeros((nkpt, ng, ng), dtype = complex)
+    comb_vec = {}
+    for i in range(nkpt):
+        q = ind_q_to_vec[i]
+        qvec = [q[0], q[1], q[2]]
+        for j in range(ng):
+            G1 = ind_G_to_vec[j]
+            G1vec = [G1[0], G1[1], G1[2]]
+            for k in range(ng):
+                G2 = ind_G_to_vec[k]
+                G2vec = [G2[0], G2[1], G2[2]]
+                if (i, j, k) not in comb_vec.keys():
+                    sum_chi = 0
+                    sym_vec = {}
+                    count = 0
+                    for l in range(nsym):
+                        S = SymRec[l]
+                        Sq = np.matmul(S, qvec)
+                        SG1 = np.matmul(S, G1vec)
+                        SG2 = np.matmul(S, G2vec)
+                        if (Sq[0], Sq[1], Sq[2]) in qibzvec_to_ind.keys() and (SG1[0], SG1[1], SG1[2]) in vec_G_to_ind.keys() and (SG2[0], SG2[1], SG2[2]) in vec_G_to_ind.keys():
+                            indq = vec_q_to_ind[(Sq[0], Sq[1], Sq[2])]
+                            indG1 = vec_G_to_ind[(SG1[0], SG1[1], SG1[2])]
+                            indG2 = vec_G_to_ind[(SG2[0], SG2[1], SG2[2])]
+                            sum_chi += smallchi0GG[indq, indG1, indG2]
+                            sym_vec[(indq, indG1, indG2)] = l
+                            comb_vec[(indq, indG1, indG2)] = 0
+                            count += 1
+                    mean = sum_chi/count
+                    for (m, n, o) in sym_vec.keys():
+                        chi0GGsym[m, n, o] = mean
+    return chi0GGsym """
+""" def Sym_chi0GG0(sus_ncfile, kpoints, ng, nkpt, G, SymRec, nsym, ind_q_to_vec, ind_G_to_vec, qibzvec_to_ind, vec_G_to_ind, vec_qibzG_to_ind, ind_qibzG_to_vec, omega):
+    # Function that symmetrizes the chi^0GG output of Abinit such that two symmetric values have exactly the same values
+    smallchi0GG = np.zeros((nkpt, ng, ng), dtype = complex)
+    for i in range(nkpt):
+            q_origin = kpoints[i]
+            chi0 = sus_ncfile.reader.read_wggmat(q_origin).wggmat
+            smallchi0GG[i] = chi0[omega]
+
+    chi0GGsym = np.zeros((nkpt, ng, ng), dtype = complex)
+    #Dictionnary to store all the q, G, G' set already treated
+    comb_vec = {}
+    for i in range(nkpt):
+        q = ind_q_to_vec[i]
+        qvec = [q[0], q[1], q[2]]
+        for j in range(ng):
+            G1 = ind_G_to_vec[j]
+            G1vec = [G1[0], G1[1], G1[2]]
+            for k in range(ng):
+                G2 = ind_G_to_vec[k]
+                G2vec = [G2[0], G2[1], G2[2]]
+                if (i, j, k) not in comb_vec.keys():
+                    sum_chi = 0
+                    #Dictionnary to store all the symmetrical q,G,G' sets
+                    sym_vec = {}
+                    count = 0
+                    for l in range(nsym):
+                        S = SymRec[l]
+                        Sq = np.matmul(S, qvec)
+                        SG1 = np.matmul(S, G1vec)
+                        SG2 = np.matmul(S, G2vec)
+                        if (Sq[0], Sq[1], Sq[2]) in qibzvec_to_ind.keys() and (SG1[0], SG1[1], SG1[2]) in vec_G_to_ind.keys() and (SG2[0], SG2[1], SG2[2]) in vec_G_to_ind.keys():
+                            indq = qibzvec_to_ind[(Sq[0], Sq[1], Sq[2])]
+                            indG1 = vec_G_to_ind[(SG1[0], SG1[1], SG1[2])]
+                            indG2 = vec_G_to_ind[(SG2[0], SG2[1], SG2[2])]
+                            sum_chi += smallchi0GG[indq, indG1, indG2]
+                            sym_vec[(indq, indG1, indG2)] = l
+                            comb_vec[(indq, indG1, indG2)] = 0
+                            count += 1
+                    mean = sum_chi/count
+                    #Replacement off all the values in the set by the mean of all the values
+                    for (m, n, o) in sym_vec.keys():
+                        chi0GGsym[m, n, o] = mean
+    return chi0GGsym
+ """
+""" if l1%2==0:
+        if l2%2==0:
+            charge_cut[0:l3, 0:l4] = charge_cut_raw[l3:l1, l4:l2]
+            charge_cut[l3:l1, 0:l4] = charge_cut_raw[0:l3, l4:l2]
+            charge_cut[0:l3, l4:l2] = charge_cut_raw[l3:l1, 0:l4]
+            charge_cut[l3:l1, l4:l2] = charge_cut_raw[0:l3, 0:l4]
+        else:
+            charge_cut[0:l3, 0:l4] = charge_cut_raw[l3:l1, l4+1:l2]
+            charge_cut[l3:l1, 0:l4] = charge_cut_raw[0:l3, l4+1:l2]
+            charge_cut[0:l3, l4:l2] = charge_cut_raw[l3:l1, 0:l4+1]
+            charge_cut[l3:l1, l4:l2] = charge_cut_raw[0:l3, 0:l4+1]
+    else:
+        if l2%2==0:
+            charge_cut[0:l3, 0:l4] = charge_cut_raw[l3+1:l1, l4:l2]
+            charge_cut[l3:l1, 0:l4] = charge_cut_raw[0:l3+1, l4:l2]
+            charge_cut[0:l3, l4:l2] = charge_cut_raw[l3+1:l1, 0:l4]
+            charge_cut[l3:l1, l4:l2] = charge_cut_raw[0:l3+1, 0:l4]
+        else:
+            charge_cut[0:l3, 0:l4] = charge_cut_raw[l3+1:l1, l4+1:l2]
+            charge_cut[l3:l1, 0:l4] = charge_cut_raw[0:l3+1, l4+1:l2]
+            charge_cut[0:l3, l4:l2] = charge_cut_raw[l3+1:l1, 0:l4+1]
+            charge_cut[l3:l1, l4:l2] = charge_cut_raw[0:l3+1, 0:l4+1] """
+""" 
+    if l1%2==0 and l2%2==0:
+        charge_cut = charge_cut_inter
+    elif l1%2==1 and l2%2==0:
+        charge_cut = np.zeros((l1+1, l2), dtype = complex)
+        charge_cut[1:l1+1] = charge_cut_inter
+        charge_cut[0]=charge_cut_inter[l1-1]
+        l1+=1
+    elif l1%2==0 and l2%2==1:
+        charge_cut = np.zeros((l1, l2+1), dtype = complex)
+        charge_cut[:,0:l2] = charge_cut_inter
+        charge_cut[:,l2]=charge_cut_inter[:, 0]
+    else:
+        charge_cut = np.zeros((l1+1, l2+1), dtype = complex)
+        charge_cut[0:l1,0:l2] = charge_cut_inter
+        charge_cut[l1, 0:l2]=charge_cut_inter[0]
+        charge_cut[:,l2]=charge_cut[:, 0] """

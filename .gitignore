@@ -133,3 +133,13 @@ Slab5Atomso_DS1_GSR.nc
 Slab5Atomso_DS2_GSR.nc
 Slab7Atomso_DS1_GSR.nc
 Slab7Atomso_DS1_SUS.nc
+*.npy
+DEN_SLAB3_3051x541
+DEN_SLAB5_3811x541
+DEN_SLAB7_4581x541
+DEN_SLAB9_5341x541
+Slab9Atoms_zGWo_DS1_SUS.nc
+Slab9Atoms_GWo_DS1_SUS.nc
+STM_SLAB5_3811x541
+*.ipynb
+*.nc copy
