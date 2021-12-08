@@ -2,6 +2,7 @@
 from Fourier_tool import openfile
 from Fourier_tool import FindSmallerKpoint as fsk
 import abipy
+from abipy.electrons.scr import ScrFile
 import numpy as np
 import cmath
 import math
@@ -9,6 +10,106 @@ import pointcloud as pc
 from scipy.interpolate import RegularGridInterpolator
 import plotly.graph_objects as go
 import time
+
+def chi0wzz(filenameS, filenameB, nc, opt = "FromSym", opt2 = "Kaltak", axe = "001"):
+    sus_ncfileS = ScrFile(filenameS)
+    sus_ncfileB = ScrFile(filenameB)
+    nwS = sus_ncfileS.reader.nw
+    nwB = sus_ncfileB.reader.nw
+    print(nwS)
+    print(nwB)
+    if nwS != nwB:
+        print("nomega must be the same for the slab and the bulk. Please provide files with the same frequency sampling")
+        return 0
+    else:
+        for i in range(nwS):
+            chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0GG(filenameS, opt, i)
+            chi0rr = FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1*nc[0], n2*nc[1], n3, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2)
+            chi0zzS = chi0zz_test(chi0rr, axe)
+            
+            chi0GG, ind_qG_to_vec, d1, d2, d3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0GG(filenameB, opt, i)
+            chi0rr = FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, d1*nc[0], d2*nc[1], d3*nc[2], d1, d2, d3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2)
+            chi0zzB = chi0zz_test(chi0rr, axe)
+            
+            Lchi0zz = LargeChi0(chi0zzB, chi0zzS)
+            if i==0:
+                l1, l2 = Lchi0zz.shape
+                chi0wzz = np.zeros(nwS, l1, l2, dtype = complex)
+            chi0wzz[i, :, :] = Lchi0zz
+        return chi0wzz
+
+def chi0wzz_test(filenameS, filenameB, nc, opt = "FromSym", opt2 = "Kaltak", axe = "001"):
+    sus_ncfileS = ScrFile(filenameS)
+    sus_ncfileB = ScrFile(filenameB)
+    nwS = sus_ncfileS.reader.nw
+    nwB = sus_ncfileB.reader.nw
+    print(nwS)
+    print(nwB)
+    if nwS != nwB:
+        print("nomega must be the same for the slab and the bulk. Please provide files with the same frequency sampling")
+        return 0
+    else:
+        for i in range(nwS):
+            chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0GG(filenameS, opt, i)
+            chi0rr = FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1*nc[0], n2*nc[1], n3, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2)
+            chi0zzS = chi0zz_test(chi0rr, axe)
+            
+            chi0GG, ind_qG_to_vec, d1, d2, d3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0GG(filenameB, opt, i)
+            chi0rr = FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, d1*nc[0], d2*nc[1], d3*nc[2], d1, d2, d3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2)
+            chi0zzB = chi0zz_test(chi0rr, axe)
+            
+            Lchi0zz = LargeChi0(chi0zzB, chi0zzS)
+            if i==0:
+                l1, l2 = Lchi0zz.shape
+                chi0wzz = np.zeros(nwS, l1, l2, dtype = complex)
+            chi0wzz[i, :, :] = Lchi0zz
+        return chi0wzz    
+
+def chi0zz_test(chi0rr, axe = "001"):
+    d1, d2, d3, d4, d5, d6 = chi0rr.shape
+    print(d3, d6)
+    if axe == "001":
+        print("in")
+        chi0zz = np.zeros((d3, d6), dtype = complex)
+        for i in range(d3):
+            for j in range(d6):
+                chi0zz[i, j]=np.sum(chi0rr[:, :, i, :, :, j])
+        chi0zz= chi0zz/(d1*d2*d4*d5)
+    if axe == "010":
+        chi0zz = np.zeros((d2, d5), dtype = complex)
+        for i in range(d2):
+            for j in range(d5):
+                chi0zz[i, j]=np.sum(chi0rr[:, i, :, :, j, :])
+        chi0zz= chi0zz/(d1*d3)**2
+    if axe == "100":
+        chi0zz = np.zeros((d1, d4), dtype = complex)
+        for i in range(d1):
+            for j in range(d4):
+                chi0zz[i, j]=np.sum(chi0rr[i, :, :, j, :, :])
+        chi0zz= chi0zz/(d2*d3)**2
+    return chi0zz
+
+def chi0zz(chi0rr, axe = "001"):
+    d1, d2, d3, d4, d5, d6 = chi0rr.shape
+    if axe == "001":
+        chi0zz = np.zeros((d3, d6), dtype = complex)
+        for i in range(d1):
+            for j in range(d2):
+                chi0zz=chi0zz+chi0Comp(chi0rr, i, j, axe = "001")
+        chi0zz= chi0zz/(d1*d2)
+    if axe == "010":
+        chi0zz = np.zeros((d2, d5), dtype = complex)
+        for i in range(d1):
+            for j in range(d3):
+                chi0zz=chi0zz+chi0Comp(chi0rr, i, j, axe = "010")
+        chi0zz= chi0zz/(d1*d3)
+    if axe == "100":
+        chi0zz = np.zeros((d1, d4), dtype = complex)
+        for i in range(d2):
+            for j in range(d3):
+                chi0zz=chi0zz+chi0Comp(chi0rr, i, j, axe = "100")
+        chi0zz= chi0zz/(d2*d3)
+    return chi0zz
 
 #Build the matrix chi0(z, z') from chi0(r, r')
 def chi0Comp(chi0rr, x, y, axe = "001"):
@@ -66,19 +167,19 @@ def LargeChi0(chi0zzB, chi0zzS):
     ds1, ds2 = chi0zzS.shape
     chi0zzB = CenterChi0(chi0zzB)
     chi0zzS = CenterChi0(chi0zzS)
-    d = db2+ds2-2
+    d = db2+ds2
     chi0zz = np.zeros((d, d), dtype = complex)
-    for i in range(round(ds1/2)-1):
+    for i in range(round(ds1/2)+1):
         chi0zz[i, 0:ds2] = chi0zzS[i, :]
     count = 0
-    for i in range(round(ds1/2), d-round(ds1/2)):
+    for i in range(round(ds1/2)+1, d-round(ds1/2)-1):
         a = round(ds1/2)+round(db1/2)+round(db1*((count-count%db1)/db1))-round(db2/2)
         b = a+db2
-        chi0zz[i, a:b] = chi0zzB[count%db1, :]
+        chi0zz[i, a:b] = chi0zzB[count%db1-(math.floor(db1/2)), :]
         count+=1
     count = 1
-    for i in range(d-round(ds1/2)+1,d):
-        chi0zz[d-count, d-ds2:d] = chi0zzS[ds2-(i-d+round(ds1/2))-1, :]
+    for i in range(d-round(ds1/2)-1,d):
+        chi0zz[d-count, d-ds2:d] = chi0zzS[ds2-(i-d+round(ds1/2))-2, :]
         count+=1
     return chi0zz
     
