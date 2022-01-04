@@ -143,3 +143,7 @@ Slab9Atoms_GWo_DS1_SUS.nc
 STM_SLAB5_3811x541
 *.ipynb
 *.nc copy
+*.nc
+gw.abi
+gwi_WFK
+log

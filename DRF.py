@@ -18,6 +18,86 @@ from scipy.interpolate import RegularGridInterpolator
 #Step 4: Make the inverse Fourier transform 
 #Step 5: Delivers the plasmon band structure
 
+def model1(chi0zzS, chi0zzB):
+    #Attention:first point not equal to last point
+    d1, d2 = chi0zzS.shape
+    n1, n2 = chi0zzB.shape
+    chi0zzB = CenterChi0(chi0zzB)
+    chi0zzS = CenterChi0(chi0zzS)
+    thickness = d2+n2
+    if d2%2==0:
+        u1 = math.floor(d2/2)
+    else:
+        u1 = math.floor(d2/2)+1
+    u2 = thickness - u1
+    chi0zz = np.zeros((thickness, thickness), dtype = complex)
+    Chi0zzB = np.zeros((thickness, thickness), dtype = complex)
+    Chi0zzS = np.zeros((thickness, thickness), dtype = complex)
+    Chi0 = np.zeros((thickness, thickness), dtype = complex)
+    for i in range(u1):
+        Chi0zzS[i, 0:d2] = chi0zzS[i]
+    count = 0
+    for i in range(u2,thickness):
+        Chi0zzS[i, thickness - d2:thickness] = chi0zzS[math.floor(d2/2)+count]
+        count+=1
+    #print(thickness)
+    #print(n2)
+    #print(math.floor(n2/2))
+    if n1%2==0:
+        r1 = math.floor(n1/2)
+    else:
+        r1 = math.floor(n1/2)+1
+    if n2%n2==0:
+        r2 = math.floor(n2/2)
+    else:
+        r2 = math.floor(n2/2)+1
+    for i in range(r2):
+        j = (math.floor((i+r1)/n1))*n1
+        l1= thickness + j - r2
+        l2= r2 + j
+        Chi0zzB[i, l1:thickness] = chi0zzB[(i+r1)%n1, 0:-j+r2]
+        Chi0zzB[i, 0:l2] = chi0zzB[(i+r1)%n1, -j+r2:n2]
+    for i in range(r2, thickness - r2):
+        ind1 = math.floor((i+r1)/n1)*n1-r2
+        ind2 = math.floor((i+r1)/n1)*n1+r2
+        Chi0zzB[i, ind1:ind2] = chi0zzB[(i+r1)%n1]
+    count = 0
+    for i in range(thickness - r2, thickness):
+        j = math.floor((count+r1)/n1)*n1
+        l1= thickness + j - n2
+        l2= j
+        Chi0zzB[i, l1:thickness] = chi0zzB[(i+r1)%n1, 0:-j+n2]
+        Chi0zzB[i, 0:l2] = chi0zzB[(i+r1)%n1, -j+n2:n2]
+        count +=1
+    for i in range(thickness):
+        for j in range(thickness):
+            if (i < u1 and j < u1) or (i>u2 and j>u2):
+                Chi0[i,j] = Chi0zzS[i,j]
+            else:
+                Chi0[i,j] = Chi0zzB[i,j]
+    return Chi0zzB, Chi0zzS, Chi0
+
+
+def chi0wzzsmall(filename, axe = "001"):
+    sus_ncfile = ScrFile(filename)
+    nw = sus_ncfile.reader.nw
+    structure=abipy.core.structure.Structure.from_file(filename)
+    lattice = structure.lattice.matrix
+    A, B, C = lattice[0], lattice[1], lattice[2]
+    vol = np.dot(A, (np.cross(B, C)))
+    chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0omegaGG_fromSym(filename, nw)
+    chi0rr = FFT_chi0_from_Mat(chi0GG[0], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
+    n1, n2, n3, n4, n5, n6 = chi0rr.shape
+    chi0zz0 = chi0zz(chi0rr, axe)
+    d1, d2 = chi0zz0.shape
+    chi0wzz = np.zeros((nw, d1, d2), dtype = complex)
+    chi0wzz[0] = chi0zz0
+    for i in range(1, nw):
+        chi0rr = FFT_chi0_from_Mat(chi0GG[i], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
+        chi0wzz[i] = chi0zz(chi0rr, axe)
+    return chi0wzz
+
+
 def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001"):
     start_time = time.time()
     #Collect generic information in order to verify the validity (only for freq) of the input files
@@ -44,13 +124,13 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
     chi0rr = FFT_chi0_from_Mat(chi0GG[0], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
     n1, n2, n3, n4, n5, n6 = chi0rr.shape
     print(chi0rr[0, 0, 0, 0, 0, 0])
-    chi0zzB = chi0zz(chi0rr, axe = "001")
+    chi0zzB = chi0zz(chi0rr, axe)
     d1, d2 = chi0zzB.shape
     chi0wzzB = np.zeros((nwB, d1, d2), dtype = complex)
     chi0wzzB[0] = chi0zzB
     for i in range(1, nwS):
         chi0rr = FFT_chi0_from_Mat(chi0GG[i], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
-        chi0wzzB[i] = chi0zz(chi0rr, axe = "001")
+        chi0wzzB[i] = chi0zz(chi0rr, axe)
     print(chi0wzzB.shape)
     l1, l2, l3 = n4, n5, n3*ncell
     chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0omegaGG_fromSym(filenameS, nwS)
@@ -58,13 +138,13 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
     chi0rr = FFT_chi0_sizeadapt(chi0GG[0], ind_qbzG_to_vec, l1, l2, l3, l1, l2, l3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak")
     print(chi0rr.shape)
     print(chi0rr[0, 0, 0, 0, 0, 0])
-    chi0zzS = chi0zz(chi0rr, axe = "001")
+    chi0zzS = chi0zz(chi0rr, axe)
     d1, d2 = chi0zzS.shape
     chi0wzzS = np.zeros((nwS, d1, d2), dtype = complex)
     chi0wzzS[0] = chi0zzS
     for i in range(1, nwS):
         chi0rr = FFT_chi0_sizeadapt(chi0GG[i], ind_qbzG_to_vec, l1, l2, l3, l1, l2, l3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak")
-        chi0wzzS[i] = chi0zz(chi0rr, axe = "001")
+        chi0wzzS[i] = chi0zz(chi0rr, axe)
     print(chi0wzzS.shape)
     Lchi0zz = LargeChi0(chi0wzzB[0], chi0wzzS[0])
     s1, s2 = Lchi0zz.shape
@@ -122,6 +202,25 @@ def chi0Comp(chi0rr, x, y, axe = "001"):
 def CenterChi0(chi0zz):
     d1, d2 = chi0zz.shape
     count = 0
+    chi0zz_out = np.zeros((d1, d2), dtype = complex)
+    if d1%2 != 0:
+        m = math.floor(d1/2)+1
+    else:
+        m = math.floor(d1/2)
+    for i in range(m):
+        chi0zz_out[i] = Rev_vec(chi0zz[i])
+    for i in range(m, d1):
+        resp = Rev_vec(chi0zz[math.floor(d1/2)-count-1, :])
+        count+=1
+        arr = resp[::-1]
+        chi0zz_out[i] = arr
+    for j in range(d2):
+        chi0zz_out[:, j] = Rev_vec(chi0zz_out[:, j])
+    return chi0zz_out
+
+def CenterChi00(chi0zz):
+    d1, d2 = chi0zz.shape
+    count = 0
     if d1%2 != 0:
         chi0zz_out = np.zeros((d1, d2), dtype = complex)
         for i in range(d1):
@@ -138,7 +237,7 @@ def CenterChi0(chi0zz):
             if i <= math.floor(d1/2):
                 chi0zz_out[i, :] = Rev_vec(chi0zz[i, :])
             else:
-                arr = Rev_vec(chi0zz[i-count-2, :])
+                arr = Rev_vec(chi0zz[i-count-1, :])
                 count+=2
                 arr = arr[::-1]
                 chi0zz_out[i, :] = arr
@@ -147,18 +246,17 @@ def CenterChi0(chi0zz):
     return chi0zz_out
 
 def Rev_vec(Y):
-    l1 = Y.size
-    Y_out = np.zeros((l1), dtype = complex)
-    if l1%2==0:
-        l2 = math.floor(l1/2)
-        Y_out[0:l2] = Y[l2:l1]
-        Y_out[l2:l1] = Y[0:l2]
-    else: 
-        l2 = math.floor(l1/2)
-        Y_out[0:l2] = Y[l2+1:l1]
-        Y_out[l2:l1] = Y[0:l2+1]
+    #In : [0, 1, 2, 3, 3, 2, 1, 0] // [0, 1, 2, 3, 3, 2, 1]
+    #Out : [3, 2, 1, 0, 0, 1, 2, 3] // [3, 2, 1, 0, 1, 2, 3]
+    l = Y.size
+    Y_out = np.zeros((l), dtype = complex)
+    if l%2==0:
+        m = math.floor(l/2)
+    else:
+        m = math.floor(l/2)+1
+    Y_out[0:m] = Y[0:m][::-1]
+    Y_out[m:l] = Y[m:l][::-1]
     return Y_out
-
         
 #Build the matrix for the larger slab from second principles
 def LargeChi0(chi0zzB, chi0zzS):
