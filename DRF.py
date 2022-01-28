@@ -18,7 +18,129 @@ from scipy.interpolate import RegularGridInterpolator
 #Step 4: Make the inverse Fourier transform 
 #Step 5: Delivers the plasmon band structure
 
+e0 =  1/(4*math.pi)
+
+def Friedel(x, per, amp, exp, delta, deph):
+    return amp*np.cos(per*x+deph)/x**exp+delta
+
+def epsilon_1(q, omega, n = 0.025):
+    q = abs(q)
+    kF = (3*math.pi**2*n)**(1/3)
+    EF = (1/2)*(3*math.pi**2*n)**(2/3)
+    pF = math.sqrt(2*EF)
+    vF = pF
+    wp = math.sqrt(n/(e0))
+    kTF = math.sqrt(4*(3*n/math.pi)**(1/3))
+    #print(EF, kF, pF, wp, kTF)
+    if q==0 and omega != 0:
+        return 1-wp**2/omega**2
+    elif q==0 and omega==0:
+        return 1
+    
+    else:
+        eq = (q**2)/2
+        ln1 = math.log(abs((eq+q*vF+omega)/(eq-q*vF+omega)))
+        ln2 = math.log(abs((eq+q*vF-omega)/(eq-q*vF-omega)))
+        pre = 1/(2*kF*q**3)
+        return 1+((kTF**2)/(2*q**2))*(1+pre*(4*EF*eq-(eq+omega)**2)*ln1+pre*(4*EF*eq-(eq-omega)**2)*ln2)
+
+def epsilon_2(q, omega, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    EF = (1/2)*(3*math.pi**2*n)**(2/3)
+    pF = math.sqrt(2*EF)
+    vF = pF
+    wp = math.sqrt(n/e0)
+    kTF = math.sqrt(4*(3*n/math.pi)**(1/3))
+    q = abs(q)
+    eq = q**2/(2)
+    if omega == 0 :
+        return epsilon_2(q, 1e-15, n)
+    if q == 0:
+        return 0
+    elif abs(q)<2*kF:
+        if omega>0 and omega<(abs(q)*vF-eq):
+            return 2*omega/q**3
+        elif omega>= q*vF-eq and omega<= eq+q*vF:
+            return 1/q**3*(kF**2-(1/q)**2*(omega-eq)**2)
+        else:
+            return 0
+    else:
+        if omega>= abs(q)*vF-eq and omega<= eq+abs(q)*vF:
+            return (1/q**3)*(kF**2-(1/q)**2*(omega-eq)**2)
+        else:
+            return 0
+
+def eps(q, omega, n = 0.025):
+    nq = len(q)
+    nw = len(omega)
+    eps = np.zeros((nq, nw), dtype = complex)
+    ic = complex(0,1)
+    for i in range(nq):
+        for j in range(nw):
+            eps[i, j] = epsilon_1(q[i], omega[j], n) + ic* epsilon_2(q[i], omega[j], n)
+    return eps
+
+def chi0q(q, omega, n = 0.025):
+    epsq = eps(q, omega, n)
+    nq, nw = epsq.shape
+    chi0q = np.zeros((nq, nw), dtype = complex)
+    for omega in range(nw):
+        for qvec in range(nq):
+                chi0q[qvec, omega] = -(epsq[qvec, omega]-1)*e0*q[qvec]**2
+    return chi0q  
+
+def chi0z(q, omega, n = 0.025):
+    chi0 = chi0q(q, omega, n)
+    nq, nw = chi0.shape
+    z_out = 1/q[1]
+    z = np.linspace(0, z_out, nq)
+    chi0z = np.zeros((nq, nw), dtype = complex)
+    for i in range(nw):
+        chi0z[:, i]  = np.fft.ifft(chi0[:, i])
+    return chi0z, z
+
+def centerslab(chi0zzS):
+    d1, d2 = chi0zzS.shape
+    chi0zzS_centered = np.zeros((d1, d2), dtype = complex)
+    for i in range(d1):
+        chi0zzS_centered[i] = Rev_vec(chi0zzS[i])
+        chi0zzS_centered[i] = chi0zzS_centered[i][::-1]
+    chi0_out = np.zeros((d1, d2), dtype = complex)
+    for i in range(d2):
+        chi0_out[:, i] = Rev_vec(chi0zzS_centered[:,i])
+        chi0_out[:, i] = chi0_out[:, i][::-1]
+    return chi0_out
+
+
 def model1(chi0zzS, chi0zzB):
+    #Attention:first point not equal to last point
+    d1, d2 = chi0zzS.shape
+    n1, n2 = chi0zzB.shape
+    chi0zzB_sym = chi0zz_SYM(chi0zzB)
+    Chi0zzS_cent = centerslab(chi0zzS)
+    thickness = d2+n2
+    Chi0 = np.zeros((thickness, thickness), dtype = complex)
+    if d2%2==0:
+        slab_lim_left = math.floor(d2/2)
+    else:
+        slab_lim_left = math.floor(d2/2)+1
+    slab_lim_right = thickness - slab_lim_left
+    for i in range(thickness):
+        for j in range(thickness):
+            if (i < slab_lim_left and j < slab_lim_left):
+                Chi0[i, j] = Chi0zzS_cent[i, j]
+            elif (i > slab_lim_right and j > slab_lim_right):
+                Chi0[i, j] = Chi0zzS_cent[i-n2, j-n2]
+            else:
+                Chi0[i, j] = chi0zzB_sym[i%n2, j%n2]
+    cut_off = min(n2, d2)
+    for i in range(thickness):
+        for j in range(thickness):
+            if abs(i-j)>cut_off:
+                Chi0[i,j] = 0
+    return Chi0
+
+def model10(chi0zzS, chi0zzB):
     #Attention:first point not equal to last point
     d1, d2 = chi0zzS.shape
     n1, n2 = chi0zzB.shape
@@ -87,6 +209,7 @@ def chi0wzzsmall(filename, axe = "001"):
     vol = np.dot(A, (np.cross(B, C)))
     chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0omegaGG_fromSym(filename, nw)
     chi0rr = FFT_chi0_from_Mat(chi0GG[0], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
+    chi0rr0 = chi0rr
     n1, n2, n3, n4, n5, n6 = chi0rr.shape
     chi0zz0 = chi0zz(chi0rr, axe)
     d1, d2 = chi0zz0.shape
@@ -120,10 +243,9 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
     ncell = round(vols/volb)
 
     chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0omegaGG_fromSym(filenameB, nwB)
-    print(n1, n2, n3)
     chi0rr = FFT_chi0_from_Mat(chi0GG[0], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
     n1, n2, n3, n4, n5, n6 = chi0rr.shape
-    print(chi0rr[0, 0, 0, 0, 0, 0])
+    #print(chi0rr[0, 0, 0, 0, 0, 0])
     chi0zzB = chi0zz(chi0rr, axe)
     d1, d2 = chi0zzB.shape
     chi0wzzB = np.zeros((nwB, d1, d2), dtype = complex)
@@ -131,13 +253,13 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
     for i in range(1, nwS):
         chi0rr = FFT_chi0_from_Mat(chi0GG[i], ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol)
         chi0wzzB[i] = chi0zz(chi0rr, axe)
-    print(chi0wzzB.shape)
+    #print(chi0wzzB.shape)
     l1, l2, l3 = n4, n5, n3*ncell
     chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol = Build_Chi0omegaGG_fromSym(filenameS, nwS)
     
     chi0rr = FFT_chi0_sizeadapt(chi0GG[0], ind_qbzG_to_vec, l1, l2, l3, l1, l2, l3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak")
-    print(chi0rr.shape)
-    print(chi0rr[0, 0, 0, 0, 0, 0])
+    #print(chi0rr.shape)
+    #print(chi0rr[0, 0, 0, 0, 0, 0])
     chi0zzS = chi0zz(chi0rr, axe)
     d1, d2 = chi0zzS.shape
     chi0wzzS = np.zeros((nwS, d1, d2), dtype = complex)
@@ -145,7 +267,7 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
     for i in range(1, nwS):
         chi0rr = FFT_chi0_sizeadapt(chi0GG[i], ind_qbzG_to_vec, l1, l2, l3, l1, l2, l3, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak")
         chi0wzzS[i] = chi0zz(chi0rr, axe)
-    print(chi0wzzS.shape)
+    #print(chi0wzzS.shape)
     Lchi0zz = LargeChi0(chi0wzzB[0], chi0wzzS[0])
     s1, s2 = Lchi0zz.shape
     Chi0wzz = np.zeros((nwS, s1, s2), dtype = complex)
@@ -158,9 +280,7 @@ def chi0wzz(filenameS, filenameB, opt = "FromSym", opt2 = "Kaltak", axe = "001")
 
 def chi0zz(chi0rr, axe = "001"):
     d1, d2, d3, d4, d5, d6 = chi0rr.shape
-    print(d3, d6)
     if axe == "001":
-        print("in")
         chi0zz = np.zeros((d3, d6), dtype = complex)
         for i in range(d3):
             for j in range(d6):
@@ -178,7 +298,21 @@ def chi0zz(chi0rr, axe = "001"):
             for j in range(d4):
                 chi0zz[i, j]=np.sum(chi0rr[i, :, :, j, :, :])
         chi0zz= chi0zz/(d2*d3)**2
+    chi0zz_out = chi0zz_SYM(chi0zz)
     return chi0zz
+
+def chi0zz_SYM(chi0zz):
+    d1, d2 = chi0zz.shape
+    chi0zz_S0 = np.zeros((d2, d2), complex)
+    chi0zz_S = np.zeros((d2, d2), complex)
+    N = round(d2/d1)
+    for i in range(d1):
+        chi0zz_S0[i, :] = chi0zz[i, :]
+        chi0zz_S0[:, i] = chi0zz[i, :]
+    for i in range(N):
+        ind1, ind2 = i*d1, d2-i*d1
+        chi0zz_S[ind1:d2,ind1:d2] = chi0zz_S0[0:ind2, 0:ind2]
+    return chi0zz_S
 
 
 def chi0Comp(chi0rr, x, y, axe = "001"):
@@ -465,6 +599,7 @@ def build_ind_pairqG_to_pair(vec_q_to_ind, vec_G_to_ind, vec_from_sym):
 def Build_Chi0omegaGG_fromSym(filename, nw):
     #Get the data of the input file : the data of the matrix chi0(w, q_ibz, G, G'), the list of qpoints (kpoints), number of G vectors (ng), the number of q-points (nkpt) and the list of G vectors in an array (G)
     sus_ncfile, kpoints, ng, nkpt, G = openfile(filename)
+    print(kpoints)
     #Extract the structure from the file
     structure=abipy.core.structure.Structure.from_file(filename)
     dict_struct = structure.to_abivars()
@@ -473,7 +608,6 @@ def Build_Chi0omegaGG_fromSym(filename, nw):
     A, B, C = lattice[0], lattice[1], lattice[2]
     #Sampling of kpoints grid
     nk = fsk(kpoints)
-    print(nk)
     vol = np.dot(A, (np.cross(B, C)))*nk[0]*nk[1]*nk[2]
     print("Opening the file" , filename, "containing a matrix chi^0[q, G, G'] with ", nkpt, "q points in the IBZ and ", ng, "G vectors")
 
@@ -517,15 +651,11 @@ def Build_Chi0omegaGG_fromSym(filename, nw):
     s1, s2, s3 = np.amax(np.abs(vec_table_with_border[:, 0])), np.amax(np.abs(vec_table_with_border[:, 1])), np.amax(np.abs(vec_table_with_border[:, 2]))
     n1, n2, n3= (2*s1)+1, (2*s2)+1, (2*s3)+1
     
-    elapsed_1 = time.time()-start_time
-    print("the initialization of the dictionnaries and gathering of the information about the valid vectors took", elapsed_1, "seconds")
     chi0GG = np.zeros((nw, nq, ng, ng), dtype = complex)
         
     smallchi0GG = Sym_chi0GG(sus_ncfile, kpoints, ng, nkpt, G, SymRec, nsym, ind_q_to_vec, ind_G_to_vec, qibzvec_to_ind, vec_G_to_ind, vec_qibzG_to_ind, ind_qibzG_to_vec, nk, nw)
     smallchi0GG = smallchi0(smallchi0GG, vec_q_to_ind, vec_G_to_ind, vec_with_missing_sym, nw, ng)
     #print(smallchi0GG)
-    elapsed_2 = time.time()-(elapsed_1+start_time)
-    print("The initialisation of smallchi0GG took", elapsed_2, "seconds")
 
     
     vec_with_all_sym = build_vec_with_all_sym(vec_qibzG_to_ind, vec_with_missing_sym)
@@ -544,8 +674,8 @@ def Build_Chi0omegaGG_fromSym(filename, nw):
             chi0GG[omega, i, j, k] = smallchi0GG[omega, ind_sm_chi021, ind_sm_chi011,  ind_sm_chi012]#*cmath.exp(ic*np.dot(t, G2_vec-G1_vec))
     chi0GG[:, 0, 0, :] = np.zeros((nw,ng))
     chi0GG[:, 0, :, 0] = np.zeros((nw,ng))
-    elapsed_3 = time.time()-(elapsed_2+elapsed_1+start_time)
-    print("the building of chi0GG took ", elapsed_3, "seconds")
+    elapsed = time.time()-start_time
+    print("the building of chi0GG took ", elapsed, "seconds")
     return chi0GG, ind_qbzG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol
 
 
@@ -621,8 +751,7 @@ def Sym_chi0GG(sus_ncfile, kpoints, ng, nkpt, G, SymRec, nsym, ind_q_to_vec, ind
                     mean = sum_chi/count
                     #Replacement off all the values in the set by the mean of all the values
                     for (m, n, o) in sym_vec.keys():
-                        chi0GGsym[0, m, n, o] = mean
-    print(len(qGpairs_w[1]))                
+                        chi0GGsym[0, m, n, o] = mean               
     for omega in range(1, nw):
         for i in qGpairs_w.keys():
             sum_chi=0
@@ -669,7 +798,6 @@ def FFT_chi0_from_Mat0(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to
     #print(n4_fft, n5_fft, n6_fft)
     fftboxsizeG = n4_fft*n5_fft*n6_fft
     # Première FFT
-    print("Starting first FFT")
     chi0rG = np.zeros((nq, fftboxsizeG, ng), dtype = complex)
     phase_fac = np.ones((n4_fft, n5_fft, n6_fft), dtype = complex)
     ic = complex(0, 1)
@@ -693,11 +821,10 @@ def FFT_chi0_from_Mat0(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to
             FFT_out = np.multiply(FFT, phase_fac)
             #add phase factor
             chi0rG[i, :, j]= np.reshape(FFT_out, fftboxsizeG)
-    elapsed1 = time.time()-start_time
+    #elapsed1 = time.time()-start_time
     #print(n4_fft, n5_fft, n6_fft )
     #print("The first FFT took ", elapsed1, " seconds")
     # Seconde FFT
-    print("Starting second FFT")
     chi0rr = np.zeros((fftboxsizeG, n1_fft, n2_fft, n3_fft), dtype = complex)
     for i in range(fftboxsizeG):
         FFTBox = np.zeros((n1_fft, n2_fft, n3_fft), dtype = complex)
@@ -712,8 +839,8 @@ def FFT_chi0_from_Mat0(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to
     #print(n4_fft, n5_fft, n6_fft )
     chi0rr_out0 = np.reshape(chi0rr, (n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft))
     chi0rr_out = chi0rr_out0 * chi0rr_out0.size/vol
-    elapsed2 = time.time()-start_time-elapsed1
-    print("The second FFT took ", elapsed2, " seconds")
+    elapsed2 = time.time()-start_time
+    print("The FFT took ", elapsed2, " seconds")
     return chi0rr_out
 
 def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_vec, G, nk, vol):
@@ -729,12 +856,11 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
     n1_fft, n2_fft, n3_fft = round(n4_fft*nk[0]), round(n5_fft*nk[1]), round(n6_fft*nk[2])
     fftboxsize = round(n1_fft*n2_fft*n3_fft)
     
-    print(n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft)
+    #print(n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft)
     #n4_fft, n5_fft, n6_fft = 10, 10, 80
     #print(n4_fft, n5_fft, n6_fft)
     fftboxsizeG = n4_fft*n5_fft*n6_fft
     # Première FFT
-    print("Starting first FFT")
     chi0rG = np.zeros((nq, fftboxsizeG, ng), dtype = complex)
     phase_fac = np.ones((n4_fft, n5_fft, n6_fft), dtype = complex)
     ic = complex(0, 1)
@@ -758,11 +884,10 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
             FFT_out = np.multiply(FFT, phase_fac)
             #add phase factor
             chi0rG[i, :, j]= np.reshape(FFT_out, fftboxsizeG)
-    elapsed1 = time.time()-start_time
+    #elapsed1 = time.time()-start_time
     #print(n4_fft, n5_fft, n6_fft )
     #print("The first FFT took ", elapsed1, " seconds")
     # Seconde FFT
-    print("Starting second FFT")
     chi0rr = np.zeros((fftboxsizeG, n1_fft, n2_fft, n3_fft), dtype = complex)
     for i in range(fftboxsizeG):
         FFTBox = np.zeros((n1_fft, n2_fft, n3_fft), dtype = complex)
@@ -777,8 +902,8 @@ def FFT_chi0_from_Mat(chi0GG, ind_qG_to_vec, n1, n2, n3, ind_q_to_vec, ind_G_to_
     #print(n4_fft, n5_fft, n6_fft )
     chi0rr_out0 = np.reshape(chi0rr, (n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft))
     chi0rr_out = chi0rr_out0 * chi0rr_out0.size/vol
-    elapsed2 = time.time()-start_time-elapsed1
-    #print("The second FFT took ", elapsed2, " seconds")
+    elapsed2 = time.time()-start_time
+    print("The FFT took ", elapsed2, " seconds")
     return chi0rr_out
 
 def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_vec, ind_G_to_vec, G, nk, vol, opt2 = "Kaltak"):
@@ -795,7 +920,6 @@ def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_v
     print(n4_fft, n5_fft, n6_fft)
     fftboxsizeG = n4_fft*n5_fft*n6_fft
     # Première FFT
-    print("Starting first FFT")
     chi0rG = np.zeros((nq, fftboxsizeG, ng), dtype = complex)
     phase_fac = np.ones((n4_fft, n5_fft, n6_fft), dtype = complex)
     ic = complex(0, 1)
@@ -819,11 +943,9 @@ def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_v
             FFT_out = np.multiply(FFT, phase_fac)
             #add phase factor
             chi0rG[i, :, j]= np.reshape(FFT_out, fftboxsizeG)
-    elapsed1 = time.time()-start_time
     #print(n4_fft, n5_fft, n6_fft )
     #print("The first FFT took ", elapsed1, " seconds")
     # Seconde FFT
-    print("Starting second FFT")
     chi0rr = np.zeros((fftboxsizeG, n1_fft, n2_fft, n3_fft), dtype = complex)
     for i in range(fftboxsizeG):
         #print(i/(fftboxsizeG-1))
@@ -838,7 +960,7 @@ def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_v
         chi0rr[i, :, :, :]=FFT
     chi0rr_out0 = np.reshape(chi0rr, (n4_fft, n5_fft, n6_fft, n1_fft, n2_fft, n3_fft))
     chi0rr_out = chi0rr_out0 * chi0rr_out0.size/vol
-    elapsed2 = time.time()-start_time-elapsed1
-    #print("The second FFT took ", elapsed2, " seconds")
+    elapsed2 = time.time()-start_time
+    print("The FFT took ", elapsed2, " seconds")
     return chi0rr_out
     
