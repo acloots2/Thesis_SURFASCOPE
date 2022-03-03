@@ -23,9 +23,12 @@ e0 =  1/(4*math.pi)
 def Friedel(x, per, amp, exp, delta, deph):
     return amp*np.cos(per*x+deph)/x**exp+delta
 
+def Friedel_without_per(x, amp, exp, delta, deph):
+    return amp*np.cos(2*math.pi/1.4*x+deph)/x**exp+delta 
+
 def epsilon_1(q, omega, n = 0.025):
     q = abs(q)
-    kF = (3*math.pi**2*n)**(1/3)
+    kF = (3*math.pi**2*n)**(1/6)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     pF = math.sqrt(2*EF)
     vF = pF
@@ -35,7 +38,7 @@ def epsilon_1(q, omega, n = 0.025):
     if q==0 and omega != 0:
         return 1-wp**2/omega**2
     elif q==0 and omega==0:
-        return 1
+        return epsilon_1(q, 0.01, n)
     
     else:
         eq = (q**2)/2
@@ -45,7 +48,7 @@ def epsilon_1(q, omega, n = 0.025):
         return 1+((kTF**2)/(2*q**2))*(1+pre*(4*EF*eq-(eq+omega)**2)*ln1+pre*(4*EF*eq-(eq-omega)**2)*ln2)
 
 def epsilon_2(q, omega, n = 0.025):
-    kF = (3*math.pi**2*n)**(1/3)
+    kF = (3*math.pi**2*n)**(1/6)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     pF = math.sqrt(2*EF)
     vF = pF
@@ -58,14 +61,14 @@ def epsilon_2(q, omega, n = 0.025):
     if q == 0:
         return 0
     elif abs(q)<2*kF:
-        if omega>0 and omega<(abs(q)*vF-eq):
+        if abs(omega)>0 and abs(omega)<(abs(q)*vF-eq):
             return 2*omega/q**3
-        elif omega>= q*vF-eq and omega<= eq+q*vF:
-            return 1/q**3*(kF**2-(1/q)**2*(omega-eq)**2)
+        elif abs(omega)>= abs(q)*vF-eq and abs(omega)<= eq+abs(q)*vF:
+            return (1/q**3)*(kF**2-(1/q)**2*(omega-eq)**2)
         else:
             return 0
     else:
-        if omega>= abs(q)*vF-eq and omega<= eq+abs(q)*vF:
+        if abs(omega)>= abs(q)*vF-eq and abs(omega)<= eq+abs(q)*vF:
             return (1/q**3)*(kF**2-(1/q)**2*(omega-eq)**2)
         else:
             return 0
@@ -97,7 +100,9 @@ def chi0z(q, omega, n = 0.025):
     chi0z = np.zeros((nq, nw), dtype = complex)
     for i in range(nw):
         chi0z[:, i]  = np.fft.ifft(chi0[:, i])
-    return chi0z, z
+    print(nq)
+    chi0z_out = chi0z*nq/z_out
+    return chi0z_out, z
 
 def centerslab(chi0zzS):
     d1, d2 = chi0zzS.shape
@@ -112,7 +117,7 @@ def centerslab(chi0zzS):
     return chi0_out
 
 
-def model1(chi0zzS, chi0zzB):
+def model1(chi0zzS, chi0zzB, cut_off, scale, void):
     #Attention:first point not equal to last point
     d1, d2 = chi0zzS.shape
     n1, n2 = chi0zzB.shape
@@ -133,10 +138,12 @@ def model1(chi0zzS, chi0zzB):
                 Chi0[i, j] = Chi0zzS_cent[i-n2, j-n2]
             else:
                 Chi0[i, j] = chi0zzB_sym[i%n2, j%n2]
-    cut_off = min(n2, d2)
+    #cut_off = min(n2, d2)
     for i in range(thickness):
         for j in range(thickness):
-            if abs(i-j)>cut_off:
+            if i < void or i > thickness - void or j < void or j > thickness - void:
+                Chi0[i,j] = 0
+            elif abs(i-j)*scale>cut_off:
                 Chi0[i,j] = 0
     return Chi0
 
@@ -468,7 +475,8 @@ def IsInvSymIn(SymRec, nsym):
     else:
         return False
 
-def add_invsym(vec_q_to_ind, ind_q_to_vec, sym_dict):
+def add_invsym(vec_q_to_ind, ind_q_to_vec, sym_dict, nsym):
+    ind=0
     for i in range(len(vec_q_to_ind)):
         q=ind_q_to_vec[i]
         if (-q[0], -q[1], -q[2]) not in vec_q_to_ind.keys():
@@ -628,7 +636,7 @@ def Build_Chi0omegaGG_fromSym(filename, nw):
     #Verification de l'inclusion de la symétrie d'inversion
     invsym_bool = IsInvSymIn(SymRec, nsym)
     if invsym_bool==False:
-        vec_q_to_ind, ind_q_to_vec, sym_dict = add_invsym(vec_q_to_ind, ind_q_to_vec, sym_dict)
+        vec_q_to_ind, ind_q_to_vec, sym_dict = add_invsym(vec_q_to_ind, ind_q_to_vec, sym_dict, nsym)
         
     nq = len(sym_dict)
     nqg = nq*ng
