@@ -1,3 +1,4 @@
+from asyncio import constants
 from Fourier_tool import openfile
 from Fourier_tool import FindSmallerKpoint as fsk
 import time 
@@ -18,7 +19,133 @@ from scipy.interpolate import RegularGridInterpolator
 #Step 4: Make the inverse Fourier transform 
 #Step 5: Delivers the plasmon band structure
 
-e0 =  1/(4*math.pi)
+####Test functions####
+ic = complex(0,1)
+def F_ll_Despoja2005(q_p, omega, l1, l2, d, EF):
+    eta = 1e-10
+    a = a_ll(q_p, l1, l2, d)
+    k = k_l(l1, d, EF)
+    return -1/(math.pi*q_p**2)*(2*a+np.sign(omega-a)*cmath.sqrt((omega - a +ic*eta)**2-q_p**2*k**2)-np.sign(omega+a)*cmath.sqrt((omega + a +ic*eta)**2-q_p**2*k**2))
+
+
+
+
+def k_l(l, d, EF):
+    return (2*(EF-el(l, d)))**(1/2)
+def el(l, d):
+    return l**2*math.pi/d**2
+def a_ll(q_p, l1, l2, d):
+    return (q_p**2)/2-(el(l1, d)-el(l2, d))
+def F_ll(q_p, omega, l1, l2, d, EF):
+    ic = complex(0, 1)
+    eta = 1e-10
+    #Might be k_l(l2) in the second term in parenthesis
+    return -1/(math.pi*q_p**2)*(2*a_ll(q_p, l1, l2, d)+ic*(q_p**2*k_l(l1, d, EF)**2 - (a_ll(q_p, l1, l2, d)-omega-ic*eta)**2)**(1/2)-ic*(q_p**2*k_l(l1, d, EF)**2 - (a_ll(q_p, l1, l2, d)+omega+ic*eta)**2)**(1/2))
+
+def chi0_Eguiluz(z1, z2, q_p, d, nband, omega, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    EF = (1/2)*(3*math.pi**2*n)**(2/3)
+    lmax = math.ceil(d*kF/math.pi)
+    nz1 = len(z1)
+    nz2 = len(z2)
+    nomega = len(omega)
+    nq = len(q_p)
+    chi0zz = np.zeros((nq, nz1, nz2, nomega), dtype = complex)
+    for w in range(nomega):
+        for q in range(nq):
+            for i in range(nz1):
+                for j in range(nz2):
+                    chi0 = 0
+                    for l1 in range(lmax):
+                        for l2 in range(nband):
+                            F = F_ll(q_p[q], omega[w], l1, l2, d, EF)
+                            alpha_i = math.pi*l1/d
+                            alpha_j = math.pi*l2/d
+                            chi0+=F*wave_func_n(z1[i], alpha_i, d)*wave_func_n(z2[j], alpha_i, d)*wave_func_n(z1[i], alpha_j, d)*wave_func_n(z2[j], alpha_j, d)
+                    chi0zz[q, i, j, w] = chi0*2
+            #chi0zz = chi0zz[q, :, :, w] + np.transpose(chi0zz[q, :, :, w])
+    return chi0zz
+
+
+            
+
+def zvec_to_qvec(z, dens):
+    nz = len(z)
+    q_out = 2*math.pi*dens
+    q = np.linspace(-q_out, q_out, nz)
+    return q
+
+def qvec_to_zvec(q, dens):
+    nq = len(q)
+    z_out = 2*math.pi*dens
+    z = np.linspace(0, z_out, nq)
+    return z
+def chi0_slab_jellium(z1, z2, omega, n, d, nband):
+    chi0zz = 0
+    eta = 1e-5
+    ic = complex(0, 1)
+    kF = (3*math.pi**2*n)**(1/3)
+    EF = (1/2)*(3*math.pi**2*n)**(2/3)
+    for i in range(nband):
+        for j in range(nband):
+            ei = 1/2*(i**2*math.pi**2)/d**2
+            ej = 1/2*(j**2*math.pi**2)/d**2
+            if ei > EF:
+                fi = 0
+            else:
+                fi = 1
+            if ej > EF:
+                fj = 0
+            else:
+                fj = 1
+            if fi==fj:
+                continue
+            else:
+                alpha_i = math.pi*i/d
+                alpha_j = math.pi*j/d
+                chi0zz+=(fi - fj)*wave_func_n(z1, alpha_i, d)*wave_func_n(z2, alpha_i, d)*wave_func_n(z1, alpha_j, d)*wave_func_n(z2, alpha_j, d)/(ei-ej-omega+ic*eta)
+    return chi0zz
+
+def chi0zz_slab_jellium(z1, z2, omega, n, d, nband):
+    nz1 = len(z1)
+    nz2 = len(z2)
+    """ wfk1 = np.zeros((nband, nz1))
+    wfk2 = np.zeros((nband, nz2))
+    for i in range(nband):
+        wfk1[i, :] = wave_func_n_vec(z1, i, d)
+    for i in range(nband):
+        wfk2[i, :] = wave_func_n_vec(z2, i, d)   """ 
+    chi0 = np.zeros((nz1, nz2), dtype = complex)
+    for i in range(nz1):
+        print(i/nz1)
+        for j in range(nz2):
+            chi0[i, j] = chi0_slab_jellium(z1[i], z2[j], omega, n, d, nband)
+    return chi0
+
+def wave_func_n_vec(z, band, l):
+    alpha = band*math.pi/l
+    return math.sqrt(2/l)*np.sin(alpha*z)
+
+def wave_func_n(z, alpha, l):
+    """  if z<0 or z>l:
+        return 0  """
+    return math.sqrt(2/l)*math.sin(alpha*z)
+
+def epsilon_z_slab(z, lslab, omega, n = 0.025):
+    if omega == 0:
+        return epsilon_z_slab(z, lslab, 0.01, n)
+    sum_func = 0
+    kF = (3*math.pi**2*n)**(1/3)
+    d = 3*math.pi/(8*kF) + math.pi**2/(8*kF**2*lslab)
+    l = lslab+2*d
+    wp = math.sqrt(n/(e0))
+    nmax = round(l*kF/math.pi)
+    for i in range(nmax):
+        alpha = math.pi*i/l
+        wf = wave_func_n(z, alpha, lslab)
+        dens = wf**2
+        sum_func+=(kF**2-alpha**2)*dens
+    return 1 - wp**2/(2*math.pi*n*omega**2)*sum_func
 
 def Friedel(x, per, amp, exp, delta, deph):
     return amp*np.cos(per*x+deph)/x**exp+delta
@@ -26,9 +153,82 @@ def Friedel(x, per, amp, exp, delta, deph):
 def Friedel_without_per(x, amp, exp, delta, deph):
     return amp*np.cos(2*math.pi/1.4*x+deph)/x**exp+delta 
 
+
+def Gaussienne(x, sigma, mu = 0):
+    return 1/(sigma*math.sqrt(2*math.pi))*np.exp(-(x-mu)**2/(2*sigma**2))
+
+def func_test(x, a = 1):
+    return np.exp(-abs(x)*a)
+
+###Project function###
+
+e0 =  1/(4*math.pi)
+def dchi0q(q, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    return -4*kF/(4*math.pi**2)*kF/2*(1/(q*kF)-math.log(abs((2*kF+q)/(2*kF-q)))*(1/q**2+1/(4*kF**2)))
+
+def fchi0q(q, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    return -4*kF/(4*math.pi**2)*(1/2+kF/(2*q)*math.log(abs((2*kF+q)/(2*kF-q)))*(1-(q**2)/(4*kF**2)))
+
+def pol3(x, a, b, c, d):
+    return a*x**3+b*x**2+c*x+d
+
+def chi0qcutoff(qlim, qmax, dens, omega, n = 0.025):
+    if qmax < qlim:
+        raise ValueError("qmax ("+str(qmax)+") must be larger than qlim ("+str(qlim)+")")
+    npoints = qmax*dens+1
+    qlim_ind = round(qlim*dens/2)
+    q = np.linspace(-qmax, qmax, npoints, endpoint = True)
+    q_rev = -np.real(Rev_vec(q))
+    q_rev[0] = 0
+    kF = (3*math.pi**2*n)**(1/3)
+    epsq = eps(q_rev, omega, n)
+    nq, nw = epsq.shape
+    const = -4*kF/(4*math.pi**2)
+    chi0q = np.zeros((nq, nw), dtype = complex)
+    for omega in range(nw):
+        for qvec in range(nq):
+            if abs(q_rev[qvec])==2*kF and omega == 0:
+                print("IN")
+                chi0q[qvec, omega] = 1/2*const
+            else:
+                chi0q[qvec, omega] = -(epsq[qvec, omega]-1)*e0*q_rev[qvec]**2
+
+    chi0q[0, 0] = const
+    A = [[3*qlim**2, 2*qlim, 1, 0], [3*qmax**2, 2*qmax, 1, 0], [qlim**3, qlim**2, qlim, 1], [qmax**3, qmax**2, qmax, 1]]
+    b = [dchi0q(qlim, n), 0, fchi0q(qlim), 0]
+    coef = np.linalg.solve(A, b)
+    
+    for i in range(nw):
+        for j in range(qlim_ind, nq - qlim_ind):
+            chi0q[j, i] = pol3(abs(q_rev[j]), coef[0], coef[1], coef[2], coef[3])
+    for i in range(omega):
+        chi0q[:, i] = Rev_vec(chi0q[:, i])
+
+    return chi0q/2, q
+
+def chi0z_cutoff(chi0q, dens):
+    nq, nw = chi0q.shape
+    chi0z = np.zeros((nq, nw), dtype = complex)
+    for i in range(nw):
+        chi0z[:, i] = np.fft.ifft(Rev_vec(chi0q[:, i]))
+    z_out = 2*math.pi*dens
+    z = np.linspace(0, z_out, nq)
+    chi0z_out = chi0z*nq/z_out
+    return chi0z_out, z
+
+def Iq(q, n=0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    #q = abs(q)
+    if q == 0:
+        return 1
+    else:
+        return 1/2+kF/(2*q)*math.log(abs((2*kF+q)/(2*kF-q)))*(1-(q**2)/(4*kF**2))
+
 def epsilon_1(q, omega, n = 0.025):
     q = abs(q)
-    kF = (3*math.pi**2*n)**(1/6)
+    kF = (3*math.pi**2*n)**(1/3)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     pF = math.sqrt(2*EF)
     vF = pF
@@ -48,7 +248,7 @@ def epsilon_1(q, omega, n = 0.025):
         return 1+((kTF**2)/(2*q**2))*(1+pre*(4*EF*eq-(eq+omega)**2)*ln1+pre*(4*EF*eq-(eq-omega)**2)*ln2)
 
 def epsilon_2(q, omega, n = 0.025):
-    kF = (3*math.pi**2*n)**(1/6)
+    kF = (3*math.pi**2*n)**(1/3)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     pF = math.sqrt(2*EF)
     vF = pF
@@ -57,7 +257,7 @@ def epsilon_2(q, omega, n = 0.025):
     q = abs(q)
     eq = q**2/(2)
     if omega == 0 :
-        return epsilon_2(q, 1e-15, n)
+        return 0
     if q == 0:
         return 0
     elif abs(q)<2*kF:
@@ -84,23 +284,55 @@ def eps(q, omega, n = 0.025):
     return eps
 
 def chi0q(q, omega, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
     epsq = eps(q, omega, n)
     nq, nw = epsq.shape
+    const = -4*kF/(4*math.pi**2)
     chi0q = np.zeros((nq, nw), dtype = complex)
     for omega in range(nw):
         for qvec in range(nq):
+            if abs(q[qvec])==2*kF and omega == 0:
+                print("IN")
+                chi0q[qvec, omega] = 1/2*const
+            else:
                 chi0q[qvec, omega] = -(epsq[qvec, omega]-1)*e0*q[qvec]**2
-    return chi0q  
+    chi0q[0, 0] = const
+    return chi0q/2  
+
+def chi0q_nolim(q, omega, n = 0.025):
+    kF = (3*math.pi**2*n)**(1/3)
+    epsq = eps(q, omega, n)
+    nq, nw = epsq.shape
+    const = -4*kF/(4*math.pi**2)
+    chi0q = np.zeros((nq, nw), dtype = complex)
+    for omega in range(nw):
+        for qvec in range(nq):
+            if abs(q[qvec])==2*kF and omega ==0:
+                print("IN")
+                chi0q[qvec, omega] = 1/2*const
+            else:
+                chi0q[qvec, omega] = -(epsq[qvec, omega]-1)*e0*q[qvec]**2
+    return chi0q/2  
 
 def chi0z(q, omega, n = 0.025):
     chi0 = chi0q(q, omega, n)
     nq, nw = chi0.shape
-    z_out = 1/q[1]
+    z_out = 2*math.pi/q[1]
     z = np.linspace(0, z_out, nq)
     chi0z = np.zeros((nq, nw), dtype = complex)
     for i in range(nw):
         chi0z[:, i]  = np.fft.ifft(chi0[:, i])
-    print(nq)
+    chi0z_out = chi0z*nq/z_out
+    return chi0z_out, z
+
+def chi0z_nolim(q, omega, n = 0.025):
+    chi0 = chi0q_nolim(q, omega, n)
+    nq, nw = chi0.shape
+    z_out = 2*math.pi/q[1]
+    z = np.linspace(0, z_out, nq)
+    chi0z = np.zeros((nq, nw), dtype = complex)
+    for i in range(nw):
+        chi0z[:, i]  = np.fft.ifft(chi0[:, i])
     chi0z_out = chi0z*nq/z_out
     return chi0z_out, z
 
@@ -298,13 +530,13 @@ def chi0zz(chi0rr, axe = "001"):
         for i in range(d2):
             for j in range(d5):
                 chi0zz[i, j]=np.sum(chi0rr[:, i, :, :, j, :])
-        chi0zz= chi0zz/(d1*d3)**2
+        chi0zz= chi0zz/(d1*d3*d4*d6)
     if axe == "100":
         chi0zz = np.zeros((d1, d4), dtype = complex)
         for i in range(d1):
             for j in range(d4):
                 chi0zz[i, j]=np.sum(chi0rr[i, :, :, j, :, :])
-        chi0zz= chi0zz/(d2*d3)**2
+        chi0zz= chi0zz/(d2*d3*d5*d6)
     chi0zz_out = chi0zz_SYM(chi0zz)
     return chi0zz
 
