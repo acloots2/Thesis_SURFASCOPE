@@ -74,6 +74,7 @@ def SecondP_jellium(qmax, dens, omega, n = 0.025):
 
 ########## Jellium Bulk 2 components ##########
 
+
 def chi0wzz_jellium(qmax, dens, omega, n = 0.025):
     nw = len(omega)
     nz = 2*qmax*dens+1
@@ -175,7 +176,7 @@ def chi0_r_3d(qmax, dens, omega, n = 0.025):
 ########## FFT Tools ##############
 def zvec_to_qvec(z, dens):
     nz = len(z)
-    q_out = 2*math.pi*dens
+    q_out = math.pi*dens
     q = np.linspace(-q_out, q_out, nz)
     return q
 
@@ -193,46 +194,7 @@ def F_ll_Despoja2005(q_p, omega, l1, l2, d, EF):
     k = k_l2(l1, d, EF)
     return -1/(math.pi*q_p**2)*(2*a+np.sign(omega-a)*cmath.sqrt((omega - a +ic*eta)**2-q_p**2*k)-np.sign(omega+a)*cmath.sqrt((omega + a +ic*eta)**2-q_p**2*k))
 
- 
 
-
-
-def chi0_Despoja(z, q_p, d, nband, omega, n = 0.025):
-    eta =1e-8
-    nband+=1
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    lmax = math.ceil(d*kF/math.pi)
-    nz = len(z)
-    eps = np.zeros(nband)
-    kl = np.zeros(nband)
-    nomega = len(omega)
-    a = np.zeros((nband, nband))
-    for i in range(1, nband):
-        eps[i] = el(i, d)
-        kl[i] = k_i(eps[i], d, EF)
-    for i in range(1, nband):
-        for j in range(1, nband):
-            a[i, j] = a_ij(q_p, eps[i], eps[j])
-    wfz = np.zeros((nband, nz))
-    for i in range(nband):
-        alpha = i*math.pi/d
-        wfz[i, :] = math.sqrt(2/d)*np.sin(alpha*z)
-    """ wfz2 = np.zeros((nband, nz2))
-    for i in range(nband):
-        alpha = i*math.pi/d
-        for j in range(nz1):
-            wfz2[i, j] = math.sqrt(2/d)*np.sin(alpha*z2[j]) """
-    chi0 = np.zeros((nomega, nz, nz), dtype = complex)
-    for i in range(nomega):
-        for j in range(1, lmax):
-            for k in range(1, nband):
-                F = -1/(math.pi*q_p**2)*(2*a[j,k]+np.sign(omega[i]-a[j,k])*cmath.sqrt((omega[i] - a[j,k] +ic*eta)**2-q_p**2*kl[j]**2)-np.sign(omega[i]+a[j,k])*cmath.sqrt((omega[i] + a[j,k] +ic*eta)**2-q_p**2*kl[j]**2))
-                #print(F)
-                for z1 in range(nz):
-                    for z2 in range(nz):
-                        chi0[i, z1, z2] += F*wfz[j, z1]*wfz[j, z2]*wfz[k, z1]*wfz[k, z2] 
-    return chi0
     
 def a_ij(q_p, ei, ej):
     return (q_p**2)/2-(ei-ej)
@@ -242,36 +204,29 @@ def k_i(ei, d, EF):
 def k_l2(l, d, EF):
     return (2*(EF-el(l, d)))
 def el(l, d):
-    return l**2*math.pi/d**2
+    return 1/2*l**2*math.pi**2/d**2
 def a_ll(q_p, l1, l2, d):
     return (q_p**2)/2-(el(l1, d)-el(l2, d))
-def F_ll(q_p, omega, l1, l2, d, EF):
-    ic = complex(0, 1)
-    eta = 1e-3
-    a = a_ll(q_p, l1, l2, d)
-    k2 = k_l2(l1, d, EF)
-    q2 = q_p**2
-    #Might be k_l(l2) in the second term in parenthesis
-    return -1/(math.pi*q2)*(2*a+ic*(q2*k2 - (a-omega-ic*eta)**2)**(1/2)-ic*(q2*k2 - (a+omega+ic*eta)**2)**(1/2))
 
-def F_ll_test(q_p, omega, l1, l2, d, EF, eta):
+
+
+def F_ll(q_p, omega, l1, l2, d, EF, eta):
     ic = complex(0, 1)
     n=0.025
     a = a_ll(q_p, l1, l2, d)
     kF = (3*math.pi**2*n)**(1/3)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     nmax = math.ceil(d*kF/math.pi)
-    if l1 > nmax:
-        return 0
-    prefactor = (EF-el(l1, d))/(2*math.pi)
+    prefactor = (EF-el(l1, d))/(math.pi)
     return -prefactor*(1/(a+omega+ic*eta)+1/(a-omega-ic*eta))
 
-def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, nband, eta):
+def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, eta):
     nw = len(omega)
     nz1, nz2 = len(z1), len(z2)
     kF = (3*math.pi**2*n)**(1/3)
     EF = (1/2)*(3*math.pi**2*n)**(2/3)
     nmax = math.ceil(d*kF/math.pi)
+    nband = nmax*4
     chi0wzz = np.zeros((nw, nz1, nz2), dtype = complex)
     energies = np.zeros((nband))
     for i in range(1, nband):
@@ -294,9 +249,8 @@ def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, nband, eta):
         print("omega = "+str(omega[i]))
         Fll = np.zeros((nmax, nband), dtype = complex)
         for j in range(1, nmax):
-            alpha = 2*(EF-energies[j])
             for k in range(1, nband):
-                Fll[j, k] = F_ll_test(0, omega[i], j, k, d, EF, eta)
+                Fll[j, k] = F_ll(0, omega[i], j, k, d, EF, eta)
         for j in range(nz1):
             for k in range(nz2):
                 for l in range(1, nmax):
@@ -307,56 +261,6 @@ def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, nband, eta):
                         wffj = wff[j, k, m]
                         chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]               
     return chi0wzz
-
-def chi0_Eguiluz(z1, z2, q_p, d, nband, omega, n = 0.025):
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    lmax = math.ceil(d*kF/math.pi)
-    nz1 = len(z1)
-    nz2 = len(z2)
-    nomega = len(omega)
-    nq = len(q_p)
-    chi0zz = np.zeros((nq, nz1, nz2, nomega), dtype = complex)
-    for w in range(nomega):
-        for q in range(nq):
-            for i in range(nz1):
-                for j in range(nz2):
-                    chi0 = 0
-                    for l1 in range(lmax):
-                        for l2 in range(nband):
-                            F = F_ll(q_p[q], omega[w], l1, l2, d, EF)
-                            alpha_i = math.pi*l1/d
-                            alpha_j = math.pi*l2/d
-                            chi0+=F*wave_func_n(z1[i], alpha_i, d)*wave_func_n(z2[j], alpha_i, d)*wave_func_n(z1[i], alpha_j, d)*wave_func_n(z2[j], alpha_j, d)
-                    chi0zz[q, i, j, w] = chi0*2
-            #chi0zz = chi0zz[q, :, :, w] + np.transpose(chi0zz[q, :, :, w])
-    return chi0zz
-
-def chi0_slab_jellium(z1, z2, omega, n, d, nband):
-    chi0zz = 0
-    eta = 1e-5
-    ic = complex(0, 1)
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    for i in range(nband):
-        for j in range(nband):
-            ei = 1/2*(i**2*math.pi**2)/d**2
-            ej = 1/2*(j**2*math.pi**2)/d**2
-            if ei > EF:
-                fi = 0
-            else:
-                fi = 1
-            if ej > EF:
-                fj = 0
-            else:
-                fj = 1
-            if fi==fj:
-                continue
-            else:
-                alpha_i = math.pi*i/d
-                alpha_j = math.pi*j/d
-                chi0zz+=(fi - fj)*wave_func_n(z1, alpha_i, d)*wave_func_n(z2, alpha_i, d)*wave_func_n(z1, alpha_j, d)*wave_func_n(z2, alpha_j, d)/(ei-ej-omega+ic*eta)
-    return chi0zz
 
 def chi0wzz_slab_jellium_Eguiluz_1step(z1, z2, omega, n, d, nband):
     nw = len(omega)
@@ -392,7 +296,7 @@ def chi0wzz_slab_jellium_Eguiluz_1step(z1, z2, omega, n, d, nband):
                     continue
                 else:
                     Fll[j, k] = (energies[k]-energies[j])/((energies[j]-energies[k])**2-omega[i]**2)
-            Fll[j, :] = -alpha/math.pi*Fll[j, :]
+            Fll[j, :] = -alpha*Fll[j, :]/math.pi
         for j in range(nz1):
             for k in range(nz2):
                 for l in range(1, nmax):
@@ -404,175 +308,14 @@ def chi0wzz_slab_jellium_Eguiluz_1step(z1, z2, omega, n, d, nband):
                         chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]               
     return chi0wzz
 
-def chi0wzz_slab_jellium_Eguiluz_1step_test1(z1, z2, omega, n, d, nband):
-    nw = len(omega)
-    nz1, nz2 = len(z1), len(z2)
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    nmax = math.ceil(d*kF/math.pi)
-    chi0wzz = np.zeros((nw, nz1, nz2), dtype = complex)
-    energies = np.zeros((nband))
-    for i in range(1, nband):
-        energies[i] = 1/2*(i**2*math.pi**2)/d**2
-    wf1 = np.zeros((nz1, nband))
-    alpha_band = np.zeros(nband)
-    for j in range(1, nband):
-        alpha_band[j] = math.pi*j/d
-        wf1[:, j] = np.sin(alpha_band[j]*z1)
-    wf2 = np.zeros((nz2, nband))
-    for j in range(1, nband):
-        wf2[:, j] = np.sin(alpha_band[j]*z2)
-    wff = np.zeros((nz1, nz2, nband))
-    for i in range(nz1):
-        for j in range(nz2):
-            for k in range(1, nband):
-                wff[i, j, k] = wf1[i, k]*wf2[j,k]
-    wff = 2/d*wff
-    for i in range(nw):
-        if omega[i] ==0:
-            print("omega = "+str(omega[i]))
-            Fll = np.zeros((nmax, nband), dtype = complex)
-            for j in range(1, nmax):
-                alpha = 2*(EF-energies[j])
-                for k in range(1, nband):
-                    if j == k:
-                        continue
-                    else:
-                        Fll[j, k] = (energies[k]-energies[j])/((energies[j]-energies[k])**2-omega[i]**2)
-                Fll[j, :] = -alpha/math.pi*Fll[j, :]
-            for j in range(nz1):
-                for k in range(nz2):
-                    for l in range(1, nmax):
-                        wffi = wff[j, k, l]
-                        for m in range(1, nband):
-                            if l == m:
-                                continue
-                            wffj = wff[j, k, m]
-                            chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]
-        else:
-            print("omega = "+str(omega[i]))
-            Fll = np.zeros((nmax, nband), dtype = complex)
-            for j in range(1, nmax):
-                alpha = 2*(EF-energies[j])
-                for k in range(1, nband):
-                    if j == k:
-                        continue
-                    else:
-                        Fll[j, k] = (energies[k]-energies[j])/((energies[j]-energies[k])**2-omega[i]**2)
-                Fll[j, :] = -alpha/math.pi*Fll[j, :]
-            for j in range(nz1):
-                for k in range(nz2):
-                    for l in range(1, nmax):
-                        wffi = wff[j, k, l]
-                        for m in range(1, nband):
-                            wffj = wff[j, k, m]
-                            chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]               
-    return chi0wzz
 
-def chi0wzz_slab_jellium_Eguiluz_1step_test2(z1, z2, omega, n, d, nband):
-    nw = len(omega)
-    nz1, nz2 = len(z1), len(z2)
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    nmax = math.ceil(d*kF/math.pi)
-    chi0wzz = np.zeros((nw, nz1, nz2), dtype = complex)
-    energies = np.zeros((nband))
-    for i in range(1, nband):
-        energies[i] = 1/2*(i**2*math.pi**2)/d**2
-    wf1 = np.zeros((nz1, nband))
-    alpha_band = np.zeros(nband)
-    for j in range(1, nband):
-        alpha_band[j] = math.pi*j/d
-        wf1[:, j] = np.sin(alpha_band[j]*z1)
-    wf2 = np.zeros((nz2, nband))
-    for j in range(1, nband):
-        wf2[:, j] = np.sin(alpha_band[j]*z2)
-    wff = np.zeros((nz1, nz2, nband))
-    for i in range(nz1):
-        for j in range(nz2):
-            for k in range(1, nband):
-                wff[i, j, k] = wf1[i, k]*wf2[j,k]
-    wff = 2/d*wff
-    for i in range(nw):
-        print("omega = "+str(omega[i]))
-        Fll = np.zeros((nmax, nband), dtype = complex)
-        for j in range(1, nmax):
-            alpha = 2*(EF-energies[j])
-            for k in range(nmax, nband):
-                Fll[j, k] = (energies[k]-energies[j])/((energies[j]-energies[k])**2-omega[i]**2)
-            Fll[j, :] = -alpha/math.pi*Fll[j, :]
-        for j in range(nz1):
-            for k in range(nz2):
-                for l in range(1, nmax):
-                    wffi = wff[j, k, l]
-                    for m in range(nmax, nband):
-                        wffj = wff[j, k, m]
-                        chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]               
-    return chi0wzz
 
-def chi0_slab_jellium_Eguiluz(z1, z2, omega, n, d, nband):
-    chi0zz = 0
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    nmax = math.ceil(d*kF/math.pi)
-    for i in range(1, nmax):
-        ei = 1/2*(i**2*math.pi**2)/d**2
-        alpha_i = math.pi*i/d
-        wf_i_z1 = wave_func_n(z1, alpha_i, d)
-        wf_i_z2 = wave_func_n(z2, alpha_i, d)
-        alpha = 2*(EF-ei)
-        wffi = wf_i_z1*wf_i_z2
-        for j in range(1,nband):
-            ej = 1/2*(j**2*math.pi**2)/d**2
-            if ei == ej:
-                continue
-            alpha_j = math.pi*j/d
-            wf_j_z1 = wave_func_n(z1, alpha_j, d)
-            wf_j_z2 = wave_func_n(z2, alpha_j, d)
-            wffj = wf_j_z1*wf_j_z2
-            chi0zz+=wffi*wffj*(-alpha*(ej-ei))/(math.pi*((ei-ej)**2-omega**2))
-    return chi0zz
 
-def chi0zz_slab_jellium_Eguiluz(z1, z2, omega, n, d, nband):
-    nz1 = len(z1)
-    nz2 = len(z2)
-    """ wfk1 = np.zeros((nband, nz1))
-    wfk2 = np.zeros((nband, nz2))
-    for i in range(nband):
-        wfk1[i, :] = wave_func_n_vec(z1, i, d)
-    for i in range(nband):
-        wfk2[i, :] = wave_func_n_vec(z2, i, d)   """ 
-    chi0 = np.zeros((nz1, nz2), dtype = complex)
-    for i in range(nz1):
-        print(i/nz1)
-        for j in range(nz2):
-            chi0[i, j] = chi0_slab_jellium_Eguiluz(z1[i], z2[j], omega, n, d, nband)
-    return chi0
 
-def chi0wzz_slab_jellium_Eguiluz(z1, z2, omega, n, d, nband):
-    nw = len(omega)
-    nz1, nz2 = len(z1), len(z2)
-    chi0wzz = np.zeros((nw, nz1, nz2), dtype = complex)
-    for i in range(nw):
-        print("omega = "+str(omega[i]))
-        chi0wzz[i, :, :] = chi0zz_slab_jellium_Eguiluz(z1, z2, omega[i], n, d, nband)
-    return chi0wzz
 
-def chi0zz_slab_jellium(z1, z2, omega, n, d, nband):
-    nz1 = len(z1)
-    nz2 = len(z2)
-    """ wfk1 = np.zeros((nband, nz1))
-    wfk2 = np.zeros((nband, nz2))
-    for i in range(nband):
-        wfk1[i, :] = wave_func_n_vec(z1, i, d)
-    for i in range(nband):
-        wfk2[i, :] = wave_func_n_vec(z2, i, d)   """ 
-    chi0 = np.zeros((nz1, nz2), dtype = complex)
-    for i in range(nz1):
-        print(i/nz1)
-        for j in range(nz2):
-            chi0[i, j] = chi0_slab_jellium(z1[i], z2[j], omega, n, d, nband)
-    return chi0
+
+
+
 
 def wave_func_n_vec(z, band, l):
     alpha = band*math.pi/l
@@ -697,11 +440,7 @@ def epsilon_2(q, omega, n = 0.025):
     kTF = math.sqrt(4*(3*n/math.pi)**(1/3))
     q = abs(q)
     eq = q**2/(2)
-    if omega == 0 :
-        return 0
-    if q == 0:
-        return 0
-    elif abs(q)<2*kF:
+    if abs(q)<2*kF:
         if abs(omega)>0 and abs(omega)<(abs(q)*vF-eq):
             return 2*omega/q**3
         elif abs(omega)>= abs(q)*vF-eq and abs(omega)<= eq+abs(q)*vF:
