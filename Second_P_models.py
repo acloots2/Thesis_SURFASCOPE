@@ -2,14 +2,15 @@ from asyncio import constants
 from Fourier_tool import openfile
 from Fourier_tool import FindSmallerKpoint as fsk
 import time 
-import abipy
 from abipy.electrons.scr import ScrFile
 import numpy as np
 import cmath
 import math
+import scipy
 import pointcloud as pc
 import DRF
 import plotly.graph_objects as go
+import abipy
 from scipy.interpolate import RegularGridInterpolator
 
 ic = complex(0,1)
@@ -18,7 +19,7 @@ e0 = 1/(4*math.pi)
 def im_chi0_XG(q, omega, n=0.025):
     npnt = len(q)
     nw = len(omega)
-    chi0q = np.zeros((nw, npnt))
+    chi0q = np.zeros((nw, npnt), dtype = complex)
     E_F = (1/2)*(3*math.pi**2*n)**(2/3)
     for i in range(nw):
         w = omega[i]
@@ -33,12 +34,12 @@ def im_chi0_XG(q, omega, n=0.025):
                 chi0q[i, j]=1/(2*math.pi)*(1/q_norm)*(E_F-E_minus)
             else:
                 continue
-    return -math.pi*chi0q
+    return -chi0q
 
 def re_chi0_XG(q, omega, n=0.025):
     npnt = len(q)
     nw = len(omega)
-    chi0q = np.zeros((nw, npnt))
+    chi0q = np.zeros((nw, npnt), dtype = complex)
     E_F = (1/2)*(3*math.pi**2*n)**(2/3)
     k_F = (3*math.pi**2*n)**(1/3)
     pref = -4/(2*math.pi)**2*k_F
@@ -65,6 +66,220 @@ def chi0q_XG(q, omega, n = 0.025):
     chi0q = rchi+ic*ichi
     return chi0q
 
+def chiq(chi0q, q, q_p, n=0.025):
+    nw, nq = chi0q.shape
+    chiq_m = np.zeros((nw, nq), dtype = complex)
+    coulomb = np.zeros((nq))
+    coulomb = 4*math.pi*np.power(np.abs(q+q_p), -2)
+    #coulomb[1:nq] = 4*math.pi*np.power(np.abs(q[1:nq]+q_p), -2)
+    #coulomb[0] = 0
+    for i in range(nw):
+        for j in range(nq):
+            chiq_inv = np.power(chi0q[i, j], -1, dtype=complex)-coulomb[j]
+            chiq_m[i, j] = np.power(chiq_inv, -1, dtype=complex)
+    return chiq_m
+
+def chiq_mat(chi0q, q, q_p, d, n=0.025):
+    nw, nq, nq0 = chi0q.shape
+    chiq_m = np.zeros((nw, nq, nq), dtype = complex)
+    coulomb = np.zeros((nq, nq))
+    if q_p == 0:
+        for i in range(1, nq):
+            coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)*(1-math.cos(q[i]*d/2))
+    else:
+        for i in range(nq):
+            coulomb[i, i] = 4*math.pi/(q[i]**2+q_p**2)*(1-math.cos(q[i]*d/2))
+    #print(np.diag(coulomb))
+    chi_to_inv = np.zeros((nq, nq), dtype = complex)
+    for i in range(nw):
+        chi_to_inv = np.linalg.inv(chi0q[i])-coulomb
+        chiq_m[i] = np.linalg.inv(chi_to_inv)
+    return chiq_m
+
+def epsilon_Wilson(chi0qGG, q, q_p, opt = "Slab"):
+    if opt == "Slab":
+        nw, nq, nq0 = chi0qGG.shape
+        eps_out = np.zeros((nw, nq, nq), dtype = complex)
+        coulomb = np.zeros((nq, nq))
+        if q_p == 0:
+            for i in range(1, nq):
+                coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)#*(1-math.cos(q[i]*d/2)) 
+        else:
+            for i in range(nq):
+                coulomb[i, i] = 4*math.pi/(q[i]**2+q_p**2)#*(1-math.cos(q[i]*d/2))
+        for i in range(nw):
+            eps_out[i] = np.diag(np.ones(nq))-np.matmul(coulomb, chi0qGG[i])
+    elif opt == "Bulk":
+        nw, nq= chi0qGG.shape
+        eps_out = np.zeros((nw, nq), dtype = complex)
+        coulomb = np.zeros((nq))
+        for i in range(1, nq):
+                coulomb[i] = 4*math.pi/(q[i]**2)#*(1-math.cos(q[i]*d/2))
+        for i in range(nw):
+            eps_out[i] = np.ones(nq)-np.matmul(coulomb, chi0qGG[i])
+    else:
+        raise ValueError("The specified option does not exist")
+    return eps_out
+
+
+def eig_plasmons(eps):
+    nw, nq, nq0 = eps.shape
+    eig_value = np.zeros((nw, nq), dtype = complex)
+    eig_l_vector = np.zeros((nw, nq, nq), dtype =complex)
+    eig_r_vector = np.zeros((nw, nq, nq), dtype =complex)
+    for i in range(nw):
+        eig_value[i], eig_l_vector[i], eig_r_vector[i] = scipy.linalg.eig(eps[i], left= True)
+        #eig_value[i] = sorted(eig_value[i])
+    return eig_value, eig_l_vector, eig_r_vector
+
+def np_eig_plasmons(eps):
+    nw, nq, nq0 = eps.shape
+    eig_value = np.zeros((nw, nq), dtype = complex)
+    eig_r_vector = np.zeros((nw, nq, nq), dtype =complex)
+    for i in range(nw):
+        eig_value[i], eig_r_vector[i] = np.linalg.eig(eps[i])
+        #eig_value[i] = sorted(eig_value[i])
+    return eig_value, eig_r_vector
+
+def inv_eig_plasmons(eps_eig):
+    nw, nq = eps_eig.shape
+    inv_eig_v = np.zeros((nw, nq), dtype = complex)
+    for i in range(nw):
+        for j in range(nq):
+            inv_eig_v[i, j] = np.power(eps_eig[i, j], -1)
+    
+    return inv_eig_v
+
+def weights(eig_r, eig_l):
+    nw, nq, nq0 = eig_r.shape
+    weight = np.zeros((nw, nq), dtype = complex)
+    delta = np.zeros((nw, nq), dtype = complex)
+    for i in range(nw):
+        for j in range(nq):
+            for k in range(nq):
+                delta[i, j] += np.conj(eig_l[i, k, j])*eig_r[i, k, j]
+    for i in range(nw):
+        for j in range(nq):
+            weight[i, j] =np.multiply(eig_r[i, 0, j], np.conj(eig_l[i, 0, j]))/delta[i, j]
+    return weight
+
+def Loss_Func(eig_v):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i = np.ones(nq)
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    return loss_func
+
+def Loss_Func_final(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    loss_func_i  = np.zeros((nw, nq), dtype = complex)
+    weight = weights(eig_r, eig_l)
+    weight_sum = np.zeros((nq), dtype = complex)
+    for i in range(nq):
+        loss_func_i[:, i] = -np.imag(np.power(eig_v[:, i], -1))
+        weight_sum[i] = np.sum(weight[:, i])
+    for i in range(nq):
+        loss_func += loss_func_i[:, i]*weight_sum[i]
+    return loss_func
+
+
+def Loss_Func_test(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    loss_func_i  = np.zeros((nw, nq), dtype = complex)
+    weight = weights(eig_r, eig_l)
+    for i in range(nq):
+        loss_func_i[:, i] = -np.imag(np.power(eig_v[:, i], -1))
+    loss_func_weight = np.multiply(loss_func_i, weight)
+    for i in range(nq):
+        loss_func += np.sum(loss_func_weight[:, i])
+    return loss_func
+
+def Loss_Func_test0(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    loss_func_i  = np.zeros((nw, nq), dtype = complex)
+    weight = weights(eig_r, eig_l)
+    for i in range(nq):
+        loss_func_i[:, i] = -np.imag(np.power(eig_v[:, i], -1))
+    loss_func_weight = np.matmul(loss_func_i, weight)
+    for i in range(nq):
+        loss_func += np.sum(loss_func_weight[:, i])
+    return loss_func
+
+
+
+def Loss_Func_test_start(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i = np.multiply(eig_r[i, 0, :], np.conj(eig_l[i, 0, :]))
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    return loss_func
+
+def Loss_Func_test_end(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i =np.abs(np.multiply(eig_r[i, :, 0], np.conj(eig_l[i, :, 0])))
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    return loss_func
+
+def Loss_Func_test3(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i =np.multiply(eig_r[i, :, 0], np.conj(eig_l[i, :, 0]))
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    return loss_func
+
+def Loss_Func_test4(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i =np.real(np.multiply(eig_r[i, :, 0], np.conj(eig_l[i, :, 0])))
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    return loss_func
+
+def Loss_Func_test5(eig_v, eig_r, eig_l):
+    nw, nq = eig_v.shape
+    loss_func = np.zeros((nw), dtype = complex)
+    weight_i = np.zeros((nw, nq), dtype = complex)
+    for i in range(nw):
+        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
+        weight_i[i] =np.multiply(eig_r[i, :, 0], np.conj(eig_l[i, :, 0]))
+    weight_i = weight_i-np.ones((nw, nq))*np.min(weight_i)
+    for i in range(nw):
+        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i[i]))
+    return loss_func
+
+
+def chiq_mat_test(chi0q, q, q_p, n=0.025):
+    nw, nq, nq0 = chi0q.shape
+    chiq_m = np.zeros((nw, nq, nq), dtype = complex)
+    q_p2 = q_p**2
+    coulomb = np.zeros((nq, nq))
+    for i in range(1,nq):
+        coulomb[i, i] = 4*math.pi*np.power(np.abs(q[i]+q_p), -2)
+    coulomb[0, 0] = 0
+    for i in range(nw):
+        chiq_inv = np.zeros((nq, nq), dtype = complex)
+        for j in range(nq):
+            for k in range(nq):
+                if j==k:
+                    chiq_inv[j, k] = np.power(chi0q[i, j, j], -1)-coulomb[j, j]
+                else:
+                    chiq_inv[j, k] = np.power(chi0q[i, j, k], -1)
+        chiq_m[i] = np.linalg.inv(chiq_inv)
+    return chiq_m
+
 def chi0z_XG(z, omega, n=0.025):
     qvec = zvec_to_qvec(z)
     chi0q = chi0q_XG(qvec, omega, n)
@@ -80,12 +295,14 @@ def chi0zz_XG(z, omega, n= 0.025):
     nz = len(z)
     chi0z = chi0z_XG(z, omega, n)
     chi0zz = np.zeros((nw, nz, nz), dtype = complex)
+    chi0zz_out = np.zeros((nw, nz, nz), dtype = complex)
     for i in range(nw):
         chi0zz[i, 0, :] = chi0z[i, :]
     for i in range(nw):
         for j in range(1, nz):
             chi0zz[i, j, :] = np.append(chi0z[i, nz-j:nz], chi0z[i, 0:nz-j])
-    return chi0zz
+        chi0zz_out[i, :, :] = (chi0zz[i]+np.transpose(chi0zz[i]))/2
+    return chi0zz_out
 
      
     
@@ -145,7 +362,7 @@ def zvec_to_qvec(z):
         qsym[npnt-i-1] = q
     return qsym
 
-def chi0_slab(thickness, dens, omega, d=75, n = 0.025, nband = 500, eta = 0.0036749326):
+def chi0_slab(thickness, dens, omega, q_p, d=75, n = 0.025, nband = 500, eta = 0.0036749326):
     if thickness%2==0:
         thickness+=1
     npoint = thickness*dens
@@ -154,7 +371,7 @@ def chi0_slab(thickness, dens, omega, d=75, n = 0.025, nband = 500, eta = 0.0036
     z_s = np.linspace(0, d, d*dens)
     qvec = zvec_to_qvec(z_b)
     chi0_bulk_wzz = chi0wzz_jellium(qvec, omega, n)
-    chi0_slab_wzz = DRF.chi0wzz_slab_jellium_Eguiluz_1step_F(z_s, z_s, omega, n, d, nband, eta)
+    chi0_slab_wzz = DRF.chi0wzz_slab_jellium_Eguiluz_1step_F(q_p, z_s, z_s, omega, n, d, eta)
     nw = len(omega)
     chi0wzz = chi0_bulk_wzz
     for i in range(nw):
@@ -163,3 +380,326 @@ def chi0_slab(thickness, dens, omega, d=75, n = 0.025, nband = 500, eta = 0.0036
                 chi0wzz[i, j, k] = chi0_slab_wzz[i, j, k]
                 chi0wzz[i, npoint-1-j, npoint-1-k] = chi0_slab_wzz[i, j, k]
     return chi0wzz
+
+def Sym_chi_Slab(chi0wzz):
+    nw, nz1, nz2 = chi0wzz.shape
+    if nz1 == nz2:
+        return chi0wzz
+    else:
+        chi0wzz_slab = np.zeros((nw, nz2, nz2), dtype = complex)
+        for i in range(nw):
+            chi0wzz_slab[i, 0:nz1, 0:nz2] = chi0wzz[i, :, :]
+            for j in range(nz1):
+                chi0wzz_slab[i, nz1-1+j, :] = chi0wzz[i, nz1-1-j, :][::-1]
+        return chi0wzz_slab
+
+def Despoja_2005(chi0wqq, qp, q_vec, d):
+    nw, nz, nq = chi0wqq.shape
+    eps_out = np.zeros((nw), dtype = complex)
+    add = np.zeros((nq, nq))
+    q2 = qp**2
+    for i in range(nq):
+        add[i, i] = q2+q_vec[i]**2
+    add[0, 0] = add[0, 0]*2
+    chi_out = np.zeros((nq, nq), dtype = complex)
+    chi_inv = np.zeros((nq, nq), dtype = complex)
+    for i in range(nw):
+        chi_out = 8*math.pi/d*chi0wqq[i]+add
+        #eps_out[i] = np.sum(chi_out[i])
+        chi_inv = np.linalg.inv(chi_out)
+        eps_out[i] = np.sum(chi_inv)
+    eps_out = eps_out*(4*qp)/d
+    return eps_out
+
+
+
+def SF_Despoja_2005(eps, qp, d):
+    eps1 = np.zeros((eps.shape), dtype = complex)
+    for i in range(len(eps)):
+        eps[i] = eps[i]**(-1)
+        eps1[i] = eps[i]+1
+    sf_out = np.imag(np.divide(eps, eps1))
+    #*math.exp(-qp*d)*
+    sf_out = 1/math.pi*math.exp(-qp*d)*2*sf_out
+    return sf_out
+
+def small_g(chiwqzz, z2, q_p):
+    nw, nz1, nz2 = chiwqzz.shape
+    g_func_int = np.zeros((nw, nz1, nz2), dtype = complex)
+    exp_math = np.zeros((nz1, nz2))
+    g_func_out = np.zeros(nw, dtype = complex)
+    for i in range(nz1):
+        for j in range(nz2):
+            exp_math[i, j] = math.exp(q_p*(z2[i]+z2[j]))
+    for i in range(nw):
+        #,exp_math
+        g_func_int[i] = chiwqzz[i]
+        g_func_out[i] = np.sum(g_func_int[i])
+    return -2*math.pi/q_p*g_func_out
+
+def chiq_sorted(chiqwqq_in):
+    nw, nq1, nq2 = chiqwqq_in.shape
+    chiwq1q2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chiwq1q2[i, j, :] = Inv_Rev_vec_1(chiqwqq_in[i, j, :])
+    chiwqq = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chiwqq[i, :, j] = Inv_Rev_vec_1(chiwq1q2[i, :, j])
+    return chiwqq
+
+def Fourier_dir(chi0wqq, q_vec):
+    nw, nq1, nq2 = chi0wqq.shape
+    q_vec = np.real(Inv_Rev_vec(q_vec))
+    if nq1 !=nq2:
+        raise ValueError("The matrix must have the same dimension nz1 and nz2")
+    chi0wq1q2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chi0wq1q2[i, j, :] = Inv_Rev_vec(chi0wqq[i, j, :])
+    chi0wqq = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chi0wqq[i, :, j] = Inv_Rev_vec(chi0wq1q2[i, :, j])
+    chi0wzq2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq1):
+            chi0wzq2[i, j, :] = np.fft.ifft(chi0wqq[i, j, :])
+    chi0wz1z2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chi0wz1z2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j])
+    q_sorted = Inv_Rev_vec(q_vec)
+    chi0wz1z2 = chi0wz1z2*nq2**2/(2*math.pi)*q_sorted[1]
+    chi0wz1z2_out = np.zeros((nw, nq1, nq2), dtype = complex)
+    
+    for i in range(nw):
+        chi0wz1z2_out[i] = (chi0wz1z2[i, :, :]+np.transpose(chi0wz1z2[i, :, :]))/2
+    return chi0wz1z2_out
+
+def Inv_Rev_vec(Y):
+    #In : [-3, -2, -1, 0, 0, 1, 2, 3] // [-3, -2, -1, 0, 1, 2, 3]
+    #Out : [0, 1, 2, 3, -3, -2, -1, -0] // [0, 1, 2, 3, -3, -2, -1]
+    l = Y.size
+    Y_out = np.zeros((l), dtype = complex)
+    if l%2==0:
+        m = math.floor(l/2)
+    else:
+        m = math.floor(l/2)+1
+    Y_out[0:m] = Y[m-1:l]
+    Y_out[m:l] = Y[0:m-1]
+    return Y_out
+
+def Inv_Rev_vec_1(Y):
+    #In : [-3, -2, -1, 0, 0, 1, 2, 3] // [-3, -2, -1, 0, 1, 2, 3]
+    #Out : [0, 1, 2, 3, -3, -2, -1, -0] // [0, 1, 2, 3, -3, -2, -1]
+    l = Y.size
+    Y_out = np.zeros((l), dtype = complex)
+    m = math.floor(l/2)
+    Y_out[0:m] = Y[m+1:l]
+    Y_out[m:l] = Y[0:m+1]
+    return Y_out
+
+def Fourier_dir_f(chi0wqq, q_vec):
+    nw, nq1, nq2 = chi0wqq.shape
+    chi0wzq2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq1):
+            chi0wzq2[i, j, :] = np.fft.ifft(chi0wqq[i, j, :])
+    chi0wz1z2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chi0wz1z2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j])
+    chi0wz1z2 = chi0wz1z2*nq2**2/(2*math.pi)*q_vec[1]
+    chi0wz1z2_out = np.zeros((nw, nq1, nq2), dtype = complex)    
+    for i in range(nw):
+        chi0wz1z2_out[i] = (chi0wz1z2[i, :, :]+np.transpose(chi0wz1z2[i, :, :]))/2
+    return chi0wz1z2_out
+
+def Fourier_inv_test(chi0wzz, z):
+    nw, nz1, nz2 = chi0wzz.shape
+    if nz1 !=nz2:
+        raise ValueError("The matrix must have the same dimension nz1 and nz2")
+    chi0wzq2 = np.zeros((nw, nz1, nz2), dtype = complex)
+    for i in range(nw):
+        for j in range(nz1):
+            chi0wzq2[i, j, :] = np.fft.fft(chi0wzz[i, j, :])
+    chi0wq1q2 = np.zeros((nw, nz1, nz2), dtype = complex)
+    for i in range(nw):
+        for j in range(nz2):
+            chi0wq1q2[i, :, j] = np.fft.fft(chi0wzq2[i, :, j])
+    return chi0wq1q2/nz2**2*max(z)
+
+def Fourier_inv(chi0wzz, z):
+    nw, nz1, nz2 = chi0wzz.shape
+    if nz1 !=nz2:
+        raise ValueError("The matrix must have the same dimension nz1 and nz2")
+    chi0wzq2 = np.zeros((nw, nz1, nz2), dtype = complex)
+    for i in range(nw):
+        for j in range(nz1):
+            chi0wzq2[i, j, :] = np.fft.fft(DRF.Rev_vec(chi0wzz[i, j, :]))
+    chi0wq1q2 = np.zeros((nw, nz1, nz2), dtype = complex)
+    for i in range(nw):
+        for j in range(nz2):
+            chi0wq1q2[i, :, j] = np.fft.fft(Inv_Rev_vec(chi0wzq2[i, :, j]))
+    return chi0wq1q2/nz2**2*max(z)
+
+def SP_model1(chi0zz_s, chi0z_b, n_bulk):
+    print("There is no possible automatic check that the two meshs of the differents matrices match. This test must be carried out manually by the user")
+    nw1, nz1, nz2 = chi0zz_s.shape
+    nw2, nz = chi0z_b.shape
+    if nw1 != nw2:
+        raise ValueError("The frequencies for the matrix of the slab and for the bulk should be the same")
+    nw = nw1
+    if nz1 != round(nz2/2) and nz1 != round(nz2/2)+1:
+        raise ValueError("The mesh for the two spatial variables of the slab matrix should be identical")
+    for i in range(nw):
+        chi0z_b[i, :] = DRF.Rev_vec(chi0z_b[i, :])
+    chi0zz_s_rev = np.zeros((nw1, nz1, nz2), dtype = complex)
+    for i in range(nw):
+        for j in range(nz1):
+            chi0zz_s_rev[i, j, :] = chi0zz_s[i, j, ::-1]
+    for i in range(nw):
+        for j in range(nz2):
+            chi0zz_s_rev[i, :, j] = chi0zz_s_rev[i, ::-1, j]
+    npnt = nz2+n_bulk*nz
+    chi0_model1 = np.zeros((nw, npnt, npnt), dtype = complex)
+    chi0_model1[:, 0:nz1, 0:nz2] = chi0zz_s 
+    chi0_model1[:, npnt-nz1:npnt, npnt-nz2:npnt] = chi0zz_s_rev
+    for i in range(nw):
+        for j in range(nz1, npnt-nz1):
+            if j < round(nz/2)+1:
+                delta = round(nz/2)-j
+                chi0_model1[i, j, 0:nz-delta] = chi0z_b[i, delta:nz]
+            elif j >= npnt-(round(nz/2))-1:
+                delta = -npnt+(round(nz/2)+1)+j
+                chi0_model1[i, j, j-(round(nz/2)):npnt] = chi0z_b[i, 0:nz-delta]
+            else:
+                chi0_model1[i, j, j-(round(nz/2)):j+(round(nz/2)+1)] = chi0z_b[i, :]
+    return chi0_model1
+
+def SP1(L, s, omega, dens=1, n = 0.025, eta = 0.2):
+    nw = len(omega)
+    #Bulk
+    nz = dens*L+1
+    z_b = np.linspace(0, L, nz)
+    qvec_b = zvec_to_qvec(z_b)
+    chi0wzz_b = chi0zz_XG(z_b, omega, n)
+    #Slab
+    nz_s = s*dens+1
+    z_s2 = np.linspace(0, s, nz_s)
+    z_s1 = np.linspace(0, math.floor(s/2)+1, (math.floor(s/2)+1)*dens+1)
+    chi0wzz_s = DRF.chi0wzz_slab_jellium_Eguiluz_1step_F(z_s1, z_s2, omega, n, s, eta)
+    ##Add Symmetrisation
+    #Second-Principle
+    chi0wzz_SP = np.zeros((nw, nz, nz), dtype = complex)
+    for i in range(nw):
+        for j in range(nz):
+            for k in range(nz):
+                if (j>=nz_s or k>=nz_s) and (j<=nz-nz_s or k<=nz-nz_s):
+                    chi0wzz_SP[i, j, k] = chi0wzz_b[i, j, k]
+                elif j<=nz_s and k<=nz_s:
+                    chi0wzz_SP[i, j, k] = chi0wzz_s[i, j, k]
+                else:
+                    chi0wzz_SP[i, j, k] = chi0wzz_s[i, nz-j, nz-k]
+    return chi0wzz_SP
+
+
+def SP1_debbug(chi0wzz_b, chi0wzz_s, zvec):
+    nw, nz, nz_out = chi0wzz_b.shape
+    nz_s = round(len(chi0wzz_s[0, 0, :])/2)
+    #Second-Principle
+    chi0wzz_SP = np.zeros((nw, nz, nz), dtype = complex)
+    for i in range(nw):
+        chi0zz_SP = np.zeros((nz, nz), dtype = complex)
+        for j in range(nz):
+            for k in range(nz):
+                if (j>=nz_s or k>=nz_s) and (j<=nz-nz_s or k<=nz-nz_s):
+                    chi0zz_SP[j, k] = chi0wzz_b[i, j, k]
+                elif j<=nz_s and k<=nz_s:
+                    chi0zz_SP[j, k] = chi0wzz_s[i, j, k]
+                else:
+                    chi0zz_SP[j, k] = chi0wzz_s[i, nz-j, nz-k]
+        chi0wzz_SP[i] = (chi0zz_SP+np.transpose(chi0zz_SP))/2
+    chi0wqq = Fourier_inv(chi0wzz_SP, zvec)
+    qvec = zvec_to_qvec(zvec)
+    chiwqq = chiq_mat(chi0wqq[:, round(nz/2):nz, round(nz/2):nz], qvec[round(nz/2):nz])
+    return chiwqq
+
+
+def DSF(chiq_mat, q, n):
+    nw, nq = chiq_mat.shape
+    inv_eps = np.zeros((nw, nq), dtype = complex)
+    dsf = np.zeros((nw, nq))
+    coulomb = np.zeros((nq))
+    coulomb_inv = np.zeros((nq))
+    coulomb[1:nq] = np.power(q[1:nq], -2)
+    coulomb_inv[1:nq] = np.power(q[1:nq], 2)
+    for i in range(nw):
+        inv_eps[i, :] = [1]*nq+np.multiply(coulomb, chiq_mat[i, :], dtype = complex)
+        dsf[i]= -1/n*np.multiply(coulomb_inv, np.imag(inv_eps[i]))
+    return dsf
+
+def dielectric_inv(chi, q):
+    nw, nq = chi.shape
+    dielectric = np.zeros((nw, nq), dtype = complex)
+    q_sq_inv = np.zeros((nq))
+    q_sq_inv[1:nq] = np.power(q[1:nq], -2)
+    q_sq_inv[0] = 1/1e-5
+    for i in range(nw):
+        dielectric[i, :] = 1+4*math.pi*np.multiply(q_sq_inv, chi[i, :], dtype = complex)
+    return dielectric
+
+
+    
+def Penzar1984(omega, q, q_p, n):
+    re_chi0 = real_penzar(omega, q, q_p, n)
+    im_chi0 = imag_penzar(omega, q, q_p, n)
+    return re_chi0+ic*im_chi0
+
+def real_penzar(omega, q, q_p, n):
+    nw = len(omega)
+    nq = len(q)
+    q2 = q_p**2
+    re_chi0_out = np.zeros((nw, nq, nq))
+    E_F = (1/2)*(3*math.pi**2*n)**(2/3)
+    prefac = (2*math.pi*q2)
+    for i in range(nw):
+        for j in range(nq):
+            for k in range(nq):
+                if j==k:
+                    #print(re_chi0_XG(np.array([q[j]]), np.array([omega[k]]), n))
+                    re_chi0_out[i, j, k] = np.real(re_chi0_XG(np.array([q[j]]), np.array([omega[k]]), n)[0, 0])*prefac
+                else:
+                    re_chi0_out[i, j, k] = U_penzar(q2, q[j], q[k], omega[i], E_F) + U_penzar(q2, q[j], -q[k], omega[i], E_F) +U_penzar(q2, q[j], q[k], -omega[i], E_F) +U_penzar(q2, q[j], -q[k], -omega[i], E_F)
+    return re_chi0_out/prefac
+
+def imag_penzar(omega, q, q_p, n):
+    nw = len(omega)
+    nq = len(q)
+    q2 = q_p**2
+    im_chi0_out = np.zeros((nw, nq, nq))
+    E_F = (1/2)*(3*math.pi**2*n)**(2/3)
+    prefac = -(2*math.pi*q2)
+    for i in range(nw):
+        for j in range(nq):
+            for k in range(nq):
+                if j==k:
+                    im_chi0_out[i, j, k] = np.real(im_chi0_XG(np.array([q[j]]), np.array([omega[k]]), n)[0, 0])*prefac
+                else:
+                    im_chi0_out[i, j, k] = V_penzar(q2, q[j], q[k], omega[i], E_F) + V_penzar(q2, q[j], -q[k], omega[i], E_F) -V_penzar(q2, q[j], q[k], -omega[i], E_F) -V_penzar(q2, q[j], -q[k], -omega[i], E_F)
+    return im_chi0_out/prefac
+                
+
+def U_penzar(qp2, q1, q2, omega, E_F):
+    return (np.abs(qp2-q1*q2+2*omega)-np.real((qp2-q1*q2+2*omega)-4*qp2*cmath.sqrt(2*E_F-1/4*(q1+q2)**2)))*np.sign(qp2-q1*q2+2*omega)*Heaviside(2*E_F-1/4*(q1+q2))
+
+def V_penzar(qp2, q1, q2, omega, E_F):
+    return np.real((qp2-q1*q2+2*omega)-4*qp2*cmath.sqrt(2*E_F-1/4*(q1+q2)**2))
+
+def Heaviside(a):
+    if a>=0:
+        return 1
+    else:
+        return 0

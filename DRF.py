@@ -197,7 +197,7 @@ def F_ll_Despoja2005(q_p, omega, l1, l2, d, EF):
 
     
 def a_ij(q_p, ei, ej):
-    return (q_p**2)/2-(ei-ej)
+    return (q_p)/2-(ei-ej)
 def k_i(ei, d, EF):
     return (2*(EF-ei))**(1/2)
 
@@ -212,15 +212,17 @@ def a_ll(q_p, l1, l2, d):
 
 def F_ll(q_p, omega, l1, l2, d, EF, eta):
     ic = complex(0, 1)
-    n=0.025
     a = a_ll(q_p, l1, l2, d)
-    kF = (3*math.pi**2*n)**(1/3)
-    EF = (1/2)*(3*math.pi**2*n)**(2/3)
-    nmax = math.ceil(d*kF/math.pi)
-    prefactor = (EF-el(l1, d))/(math.pi)
-    return -prefactor*(1/(a+omega+ic*eta)+1/(a-omega-ic*eta))
+    if q_p == 0:
+        prefactor = (EF-el(l1, d))/(math.pi)
+        return -prefactor*(1/(a+omega+ic*eta)+1/(a-omega-ic*eta))
+    else:
+        k_l = cmath.sqrt(2*(EF-el(l1, d)))
+        return -1/(math.pi*q_p**2)*(2*a+ic*cmath.sqrt(q_p**2*k_l**2-(a-omega-ic*eta)**2)-ic*cmath.sqrt(q_p**2*k_l**2-(a+omega+ic*eta)**2))
 
-def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, eta):
+
+
+def chi0wzz_slab_jellium_Eguiluz_1step_F(q_p, z1, z2, omega, n, d, eta):
     nw = len(omega)
     nz1, nz2 = len(z1), len(z2)
     kF = (3*math.pi**2*n)**(1/3)
@@ -246,11 +248,10 @@ def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, eta):
                 wff[i, j, k] = wf1[i, k]*wf2[j,k]
     wff = (2/d)*wff
     for i in range(nw):
-        print("omega = "+str(omega[i]))
         Fll = np.zeros((nmax, nband), dtype = complex)
         for j in range(1, nmax):
             for k in range(1, nband):
-                Fll[j, k] = F_ll(0, omega[i], j, k, d, EF, eta)
+                Fll[j, k] = F_ll(q_p, omega[i], j, k, d, EF, eta)
         for j in range(nz1):
             for k in range(nz2):
                 for l in range(1, nmax):
@@ -259,7 +260,7 @@ def chi0wzz_slab_jellium_Eguiluz_1step_F(z1, z2, omega, n, d, eta):
                         if l == m:
                             continue
                         wffj = wff[j, k, m]
-                        chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]               
+                        chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]   
     return chi0wzz
 
 def chi0wzz_slab_jellium_Eguiluz_1step(z1, z2, omega, n, d, nband):
@@ -870,11 +871,11 @@ def qbz_dict(SymRec, nsym, nkpt, kpoints, nk):
                 q_in_bz = (q[0], q[1], q[2])
             q_vec = np.round(np.multiply([q_in_bz[0], q_in_bz[1], q_in_bz[2]], nk))
             if (q_vec[0], q_vec[1], q_vec[2]) not in vec_q_to_ind.keys():
-                        ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
-                        vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
-                        # Dict linking the index of the nth qpoint to the qibz and the symmetry required to obtain it
-                        sym_dict[ind] = (i, j, (0, 0))
-                        ind+=1
+                ind_q_to_vec[ind] = (q_vec[0], q_vec[1], q_vec[2])
+                vec_q_to_ind[(q_vec[0], q_vec[1], q_vec[2])] = ind
+                # Dict linking the index of the nth qpoint to the qibz and the symmetry required to obtain it
+                sym_dict[ind] = (i, j, (0, 0))
+                ind+=1
             else:
                 continue
     return vec_q_to_ind, ind_q_to_vec, sym_dict
@@ -1387,4 +1388,55 @@ def FFT_chi0_sizeadapt(chi0GG, ind_qG_to_vec, n1, n2, n3, n4, n5, n6, ind_q_to_v
     elapsed2 = time.time()-start_time
     print("The FFT took ", elapsed2, " seconds")
     return chi0rr_out
+
+"""def F_ll_test(qp_sq, omega, e1, e2, k_l, EF, eta):
+    ic = complex(0, 1)
+    a = a_ij(qp_sq, e1, e2)
+    if qp_sq == 0:
+        prefactor = (EF-e1)/(math.pi)
+        return -prefactor*(1/(a+omega+ic*eta)+1/(a-omega-ic*eta))
+    else:
+        return -1/(math.pi*qp_sq)*(2*a+ic*cmath.sqrt(qp_sq*k_l-(a-omega-ic*eta)**2)-ic*cmath.sqrt(qp_sq*k_l-(a+omega+ic*eta)**2))
+
+def chi0wzz_slab_jellium_Eguiluz_1step_F_test(q_p, z1, z2, omega, n, d, eta):
+    nw = len(omega)
+    nz1, nz2 = len(z1), len(z2)
+    kF = (3*math.pi**2*n)**(1/3)
+    EF = (1/2)*(3*math.pi**2*n)**(2/3)
+    nmax = math.ceil(d*kF/math.pi)
+    nband = nmax*4
+    qp_sq = q_p**2
+    chi0wzz = np.zeros((nw, nz1, nz2), dtype = complex)
+    energies = np.zeros((nband))
+    k_l = np.zeros((nband), dtype = complex)
+    wf1 = np.zeros((nz1, nband))
+    wf2 = np.zeros((nz2, nband))
+    alpha_band = np.zeros(nband)
+    for i in range(1, nband):
+        energies[i] = 1/2*(i**2*math.pi**2)/d**2
+        alpha_band[i] = math.pi*i/d
+        k_l[i] = cmath.sqrt(2*(EF-energies[i]))
+        wf1[:, i] = np.sin(alpha_band[i]*z1)
+        wf2[:, i] = np.sin(alpha_band[i]*z2)
+    wff = np.zeros((nz1, nz2, nband))
+    for i in range(nz1):
+        for j in range(nz2):
+            for k in range(1, nband):
+                wff[i, j, k] = wf1[i, k]*wf2[j,k]
+    wff = (2/d)*wff
+    for i in range(nw):
+        Fll = np.zeros((nmax, nband), dtype = complex)
+        for j in range(1, nmax):
+            for k in range(1, nband):
+                Fll[j, k] = F_ll_test(qp_sq, omega[i], energies[j], energies[k], k_l[j], EF, eta)
+        for j in range(nz1):
+            for k in range(nz2):
+                for l in range(1, nmax):
+                    wffi = wff[j, k, l]
+                    for m in range(1, nband):
+                        if l == m:
+                            continue
+                        wffj = wff[j, k, m]
+                        chi0wzz[i, j, k]+=wffi*wffj*Fll[l, m]   
+    return chi0wzz"""
     
