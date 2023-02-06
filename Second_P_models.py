@@ -30,7 +30,7 @@ def im_chi0_XG(q, omega, n=0.025):
             E_minus = (w-(q_norm**2)/2)**2*(2/(q_norm**2))*1/4
             if E_minus<=(E_F-w):
                 chi0q[i, j]=1/(2*math.pi)*(1/q_norm)*w
-            elif E_F>=E_minus and E_minus>= E_F-w:
+            elif E_F >= E_minus >= E_F-w:
                 chi0q[i, j]=1/(2*math.pi)*(1/q_norm)*(E_F-E_minus)
             else:
                 continue
@@ -66,15 +66,23 @@ def chi0q_XG(q, omega, n = 0.025):
     chi0q = rchi+ic*ichi
     return chi0q
 
-def chiq(chi0q, q, q_p, n=0.025):
+def chiq(chi0q, q, q_p, opt = "positive"):
+    #Option are "positive" with q values from 0 to q_max or "symmetric" with values from -q_max to q_max
     nw, nq = chi0q.shape
     chiq_m = np.zeros((nw, nq), dtype = complex)
     coulomb = np.zeros((nq))
-    coulomb = 4*math.pi*np.power(np.abs(q+q_p), -2)
-    #coulomb[1:nq] = 4*math.pi*np.power(np.abs(q[1:nq]+q_p), -2)
-    #coulomb[0] = 0
+    if opt == "positive" and q_p != 0:
+        coulomb = 4*math.pi*np.power(np.abs(q+q_p), -2)
+    elif opt == "positive" and q_p == 0:
+        coulomb[1:nq] = 4*math.pi*np.power(np.abs(q[1:nq]), -2)
+    elif opt == "symmetric" and q_p == 0:
+        q = np.real(Inv_Rev_vec(q))
+        coulomb[1:nq] = 4*math.pi*np.power(np.abs(q[1:nq]), -2)
+    else:
+        q = np.real(Inv_Rev_vec(q))
+        coulomb = 4*math.pi*np.power(np.abs(q+q_p), -2)
     for i in range(nw):
-        for j in range(nq):
+        for j in range(1, nq):
             chiq_inv = np.power(chi0q[i, j], -1, dtype=complex)-coulomb[j]
             chiq_m[i, j] = np.power(chiq_inv, -1, dtype=complex)
     return chiq_m
@@ -101,9 +109,41 @@ def epsilon_Wilson(chi0qGG, q, q_p, opt = "Slab"):
         nw, nq, nq0 = chi0qGG.shape
         eps_out = np.zeros((nw, nq, nq), dtype = complex)
         coulomb = np.zeros((nq, nq))
+        print(nq, len(q))
         if q_p == 0:
             for i in range(1, nq):
                 coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)#*(1-math.cos(q[i]*d/2)) 
+        else:
+            for i in range(nq):
+                coulomb[i, i] = 4*math.pi/(q[i]**2+q_p**2)#*(1-math.cos(q[i]*d/2))
+        for i in range(nw):
+            eps_out[i] = np.diag(np.ones(nq))-np.matmul(coulomb, chi0qGG[i])
+    elif opt == "Bulk":
+        nw, nq= chi0qGG.shape
+        eps_out = np.zeros((nw, nq), dtype = complex)
+        coulomb = np.zeros((nq))
+        for i in range(nq):
+            if q[i]==0:
+                continue
+            coulomb[i] = 4*math.pi/(q[i]**2)#*(1-math.cos(q[i]*d/2))
+        for i in range(nw):
+            eps_out[i] = np.ones(nq)-np.multiply(coulomb, chi0qGG[i])
+    else:
+        raise ValueError("The specified option does not exist")
+    return eps_out
+
+def epsilon_Wilson_test_bulk(chi0qGG, q, q_p, opt = "Slab"):
+    if opt == "Slab":
+        nw, nq, nq0 = chi0qGG.shape
+        eps_out = np.zeros((nw, nq, nq), dtype = complex)
+        coulomb = np.zeros((nq, nq))
+        mid = round(nq/2)
+        print(mid)
+        if q_p == 0:
+            for i in range(0, mid):
+                coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)#*(1-math.cos(q[i]*d/2)) 
+            for i in range(mid+1, nq):
+                coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)
         else:
             for i in range(nq):
                 coulomb[i, i] = 4*math.pi/(q[i]**2+q_p**2)#*(1-math.cos(q[i]*d/2))
@@ -160,16 +200,222 @@ def weights(eig_r, eig_l):
                 delta[i, j] += np.conj(eig_l[i, k, j])*eig_r[i, k, j]
     for i in range(nw):
         for j in range(nq):
-            weight[i, j] =np.multiply(eig_r[i, 0, j], np.conj(eig_l[i, 0, j]))/delta[i, j]
+            weight[i, j] = eig_r[i, 0, j]*np.conj(eig_l[i, 0, j])/delta[i, j]
+    return weight
+
+def weight_Majerus(eps_wGG):
+    nw, nq, nq0 = eps_wGG.shape
+    weights_p = np.zeros((nw, nq), dtype = complex)
+    eig_all = np.zeros((nw, nq), dtype = complex)
+    eig = np.zeros((nw, nq), dtype = complex)
+    vec_dual = np.diag(np.ones(nq))
+    eps_GG = eps_wGG[0]
+    eig_all[0], vec_p = np.linalg.eig(eps_GG)
+    vec_dual_p = np.linalg.inv(vec_p)
+    vec_dual = vec_dual_p
+    vec = vec_p
+    eig[0] = eig_all[0, :]
+    weights_p[0]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    for i in range(1, nw):
+        eps_GG = eps_wGG[i]
+        eig_all[i], vec_p = np.linalg.eig(eps_GG)
+        vec_dual_p = np.linalg.inv(vec_p)
+        ####
+        overlap = np.abs(np.dot(vec_dual, vec_p))
+        index = list(np.argsort(overlap)[:, -1])
+        if len(np.unique(index)) < nq:  # add missing indices
+            addlist = []
+            removelist = []
+            for j in range(nq):
+                if index.count(j) < 1:
+                    addlist.append(j)
+                if index.count(j) > 1:
+                    for l in range(1, index.count(j)):
+                        removelist+= list(np.argwhere(np.array(index) == j)[l])
+            for j in range(len(addlist)):
+                index[removelist[j]] = addlist[j]
+        ####
+
+        vec = vec_p[:, index]
+        vec_dual = vec_dual_p[index, :]
+        eig[i] = eig_all[i, index]
+        weights_p[i]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    return weights_p, eig, eig_all
+
+
+def weight_Majerus_bulk(eps_wGG):
+    nw, nq = eps_wGG.shape
+    weights_p = np.zeros((nw, nq), dtype = complex)
+    eig_all = np.zeros((nw, nq), dtype = complex)
+    eig = np.zeros((nw, nq), dtype = complex)
+    vec_dual = np.diag(np.ones(nq))
+    eps_GG = eps_wGG[0]
+    eig_all[0], vec_p = np.linalg.eig(np.diag(eps_GG))
+    vec_dual_p = np.linalg.inv(vec_p)
+    vec_dual = vec_dual_p
+    vec = vec_p
+    eig[0] = eig_all[0, :]
+    weights_p[0]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    for i in range(1, nw):
+        eps_GG = eps_wGG[i]
+        eig_all[i], vec_p = np.linalg.eig(np.diag(eps_GG))
+        vec_dual_p = np.linalg.inv(vec_p)
+        ####
+        overlap = np.abs(np.dot(vec_dual, vec_p))
+        index = list(np.argsort(overlap)[:, -1])
+        if len(np.unique(index)) < nq:  # add missing indices
+            addlist = []
+            removelist = []
+            for j in range(nq):
+                if index.count(j) < 1:
+                    addlist.append(j)
+                if index.count(j) > 1:
+                    for l in range(1, index.count(j)):
+                        removelist+= list(np.argwhere(np.array(index) == j)[l])
+            for j in range(len(addlist)):
+                index[removelist[j]] = addlist[j]
+        ####
+
+        vec = vec_p[:, index]
+        vec_dual = vec_dual_p[index, :]
+        eig[i] = eig_all[i, index]
+        weights_p[i]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    return weights_p, eig, eig_all
+
+
+def weight_Majerus_test(eps_wGG):
+    nw, nq, nq0 = eps_wGG.shape
+    weights_p = np.zeros((nw, nq), dtype = complex)
+    eig_all = np.zeros((nw, nq), dtype = complex)
+    eig = np.zeros((nw, nq), dtype = complex)
+    vec_dual = np.diag(np.ones(nq))
+    eps_GG = eps_wGG[0]
+    eig_all[0], vec_p_l, vec_p_r = scipy.linalg.eig(eps_GG, left=True)
+    vec_dual_p = vec_p_l
+    vec_dual = vec_dual_p
+    vec = vec_p_r
+    eig[0] = eig_all[0, :]
+    weights_p[0]=np.multiply(vec[0,:],(np.conj(vec_dual[0,:])))
+    for i in range(1, nw):
+        eps_GG = eps_wGG[i]
+        eig_all[i], vec_p_l, vec_p_r = scipy.linalg.eig(eps_GG, left=True)
+        vec_dual_p = vec_p_l
+        ####
+        overlap = np.abs(np.dot(np.conj(vec_dual), vec_p_r))
+        index = list(np.argsort(overlap)[:, -1])
+        if len(np.unique(index)) < nq:  # add missing indices
+            addlist = []
+            removelist = []
+            for j in range(nq):
+                if index.count(j) < 1:
+                    addlist.append(j)
+                if index.count(j) > 1:
+                    for l in range(1, index.count(j)):
+                        removelist+= list(np.argwhere(np.array(index) == j)[l])
+            for j in range(len(addlist)):
+                index[removelist[j]] = addlist[j]
+        ####
+
+        vec = vec_p_r[:, index]
+        vec_dual = vec_dual_p[:, index]
+        eig[i] = eig_all[i, index]
+        delta = np.zeros((nq), dtype = complex)
+        vec_inv_l = np.linalg.inv(vec_dual)
+        vec_inv_r = np.linalg.inv(vec)
+        for j in range(nq):
+            for k in range(nq):
+                delta[j] += np.conj(vec_inv_l[k, j])*vec_inv_r[k, j]
+        weights_p[i]=np.divide(np.multiply(vec[0,:],(np.conj(vec_dual[0,:]))),delta)
+    return weights_p, eig, eig_all
+
+def weight_Majerus_test_1(eps_wGG):
+    nw, nq, nq0 = eps_wGG.shape
+    weights_p = np.zeros((nw, nq), dtype = complex)
+    eig_all = np.zeros((nw, nq), dtype = complex)
+    eig = np.zeros((nw, nq), dtype = complex)
+    vec_p_l = np.zeros((nw, nq, nq), dtype = complex)
+    vec_p_r = np.zeros((nw, nq, nq), dtype = complex)
+    delta = np.zeros((nw, nq), dtype = complex)
+    for i in range(nw):
+        eig_all[i], vec_p_l[i], vec_p_r[i] = scipy.linalg.eig(eps_wGG[i], left=True)
+
+    for i in range(nw):
+        for j in range(nq):
+            for k in range(nq):
+                delta[i, j] += np.conj(vec_p_l[i, k, j])*vec_p_r[i, k, j]
+    for i in range(nw):
+        for j in range(nq):
+            vec_p_r[i, j, :] = vec_p_r[i, j, :]*delta[i,j]
+    vec_dual = np.diag(np.ones(nq))
+    eps_GG = eps_wGG[0]
+    eig_all[0], vec_p_l, vec_p_r = scipy.linalg.eig(eps_GG, left=True)
+    vec_dual_p = vec_p_l
+    vec_dual = vec_dual_p
+    vec = vec_p_r
+    eig[0] = eig_all[0, :]
+    weights_p[0]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    for i in range(1, nw):
+        eps_GG = eps_wGG[i]
+        eig_all[i], vec_p_l, vec_p_r = scipy.linalg.eig(eps_GG, left=True)
+        vec_dual_p = vec_p_l
+        ####
+        overlap = np.abs(np.dot(np.transpose(vec_dual), vec_p_r))
+        index = list(np.argsort(overlap)[:, -1])
+        if len(np.unique(index)) < nq:  # add missing indices
+            addlist = []
+            removelist = []
+            for j in range(nq):
+                if index.count(j) < 1:
+                    addlist.append(j)
+                if index.count(j) > 1:
+                    for l in range(1, index.count(j)):
+                        removelist+= list(np.argwhere(np.array(index) == j)[l])
+            for j in range(len(addlist)):
+                index[removelist[j]] = addlist[j]
+        ####
+
+        vec = vec_p_r[:, index]
+        vec_dual = vec_dual_p[:, index]
+        eig[i] = eig_all[i, index]
+        weights_p[i]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
+    return weights_p, eig, eig_all
+
+def Loss_Func_Majerus(eps_wGG):
+    nw, nq = eps_wGG.shape[0], eps_wGG.shape[1]
+    loss_func = np.zeros((nw), dtype = complex)
+    weights_p, eig, eig_all = weight_Majerus(eps_wGG)
+    for i in range(nq):
+        loss_func_i = -np.imag(np.power(eig[:, i], -1))
+        weight_i = weights_p[:, i]
+        loss_func += np.multiply(loss_func_i, weight_i)
+    return loss_func
+
+def weights_test(eig_r, eig_l):
+    nw, nq, nq0 = eig_r.shape
+    weight = np.zeros((nw, nq), dtype = complex)
+    delta = np.zeros((nw, nq), dtype = complex)
+    half = round(nq/2)
+
+    vec_inv_l = np.zeros((nw, nq, nq), dtype = complex)
+    vec_inv_r = np.zeros((nw, nq, nq), dtype = complex)
+    for i in range(nw):
+        vec_inv_l[i] = np.linalg.inv(eig_l[i])
+        vec_inv_r[i] = np.linalg.inv(eig_r[i])
+        for j in range(nq):
+            for k in range(nq):
+                delta[i, j] += np.conj(vec_inv_l[i, k, j])*vec_inv_r[i, k, j]
+    for i in range(nw):
+        for j in range(nq):
+            weight[i, j] =vec_inv_r[i, 0, j]*np.conj(vec_inv_l[i, 0, j])
     return weight
 
 def Loss_Func(eig_v):
     nw, nq = eig_v.shape
     loss_func = np.zeros((nw), dtype = complex)
-    for i in range(nw):
-        loss_func_i = -np.imag(np.power(eig_v[i, :], -1))
-        weight_i = np.ones(nq)
-        loss_func[i] = np.sum(np.multiply(loss_func_i, weight_i))
+    for i in range(nq):
+        loss_func_i = -np.imag(np.power(eig_v[:, i], -1))
+        weight_i = np.ones(nw)
+        loss_func += np.multiply(loss_func_i, weight_i)
     return loss_func
 
 def Loss_Func_final(eig_v, eig_r, eig_l):
@@ -190,7 +436,7 @@ def Loss_Func_test(eig_v, eig_r, eig_l):
     nw, nq = eig_v.shape
     loss_func = np.zeros((nw), dtype = complex)
     loss_func_i  = np.zeros((nw, nq), dtype = complex)
-    weight = weights(eig_r, eig_l)
+    weight = weights_test(eig_r, eig_l)
     for i in range(nq):
         loss_func_i[:, i] = -np.imag(np.power(eig_v[:, i], -1))
     loss_func_weight = np.multiply(loss_func_i, weight)
@@ -202,10 +448,10 @@ def Loss_Func_test0(eig_v, eig_r, eig_l):
     nw, nq = eig_v.shape
     loss_func = np.zeros((nw), dtype = complex)
     loss_func_i  = np.zeros((nw, nq), dtype = complex)
-    weight = weights(eig_r, eig_l)
+    weight = weights_test(eig_r, eig_l)
     for i in range(nq):
         loss_func_i[:, i] = -np.imag(np.power(eig_v[:, i], -1))
-    loss_func_weight = np.matmul(loss_func_i, weight)
+    loss_func_weight = np.multiply(loss_func_i, weight)
     for i in range(nq):
         loss_func += np.sum(loss_func_weight[:, i])
     return loss_func
