@@ -109,9 +109,10 @@ def epsilon_Wilson(chi0qGG, q, q_p, opt = "Slab"):
         nw, nq, nq0 = chi0qGG.shape
         eps_out = np.zeros((nw, nq, nq), dtype = complex)
         coulomb = np.zeros((nq, nq))
-        print(nq, len(q))
         if q_p == 0:
             for i in range(1, nq):
+                if q[i]==0:
+                    continue
                 coulomb[i, i] = 4*math.pi*np.power((q[i]), -2)#*(1-math.cos(q[i]*d/2)) 
         else:
             for i in range(nq):
@@ -762,6 +763,19 @@ def Fourier_dir_f(chi0wqq, q_vec):
     for i in range(nw):
         chi0wz1z2_out[i] = (chi0wz1z2[i, :, :]+np.transpose(chi0wz1z2[i, :, :]))/2
     return chi0wz1z2_out
+
+def Fourier_dir_fwithout_sym(chi0wqq, q_vec):
+    nw, nq1, nq2 = chi0wqq.shape
+    chi0wzq2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq1):
+            chi0wzq2[i, j, :] = np.fft.ifft(chi0wqq[i, j, :])
+    chi0wz1z2 = np.zeros((nw, nq1, nq2), dtype = complex)
+    for i in range(nw):
+        for j in range(nq2):
+            chi0wz1z2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j])
+    chi0wz1z2 = chi0wz1z2*nq2
+    return chi0wz1z2
 
 def Fourier_inv_test(chi0wzz, z):
     nw, nz1, nz2 = chi0wzz.shape

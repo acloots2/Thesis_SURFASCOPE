@@ -1,0 +1,105 @@
+"""Class that builds an object containing all the required data to analyze the 
+dielectric properties of bulk jellium"""
+
+
+import math
+import numpy as np
+import jellium_bulk as jb
+import tools
+import test_set as ts
+
+
+class DielFuncBulk:
+    """Class with the bulk object for which different dielectric properties can be computed"""
+    def __init__(self, filename, point_dens, omega, d_bulk, eta, dens):
+        self.thickness = d_bulk
+        self.spat_coord = np.linspace(0, round(d_bulk), point_dens*round(d_bulk)+1)
+        self.damping = eta*0.03675
+        self.nfreq = len(omega)
+        self.freq = omega+[self.damping]*self.nfreq
+        self.n_z = len(self.spat_coord)
+        self.qvec = tools.zvec_to_qvec(self.spat_coord)
+        self.elec_density = dens
+        self.plasma_freq = math.sqrt(self.elec_density*4*math.pi)*27.211
+        self.dens_resp_func = []
+        self.dielectric_resp = []
+        self.eig_v_eps, self.eig_lvec_eps, self.eig_rvec_eps, self.loss_func = [], [], [], []
+        self.dens_resp_func_recip = []
+        self.weight = []
+        if filename == []:
+            self.dens_resp_func_recip = jb.chi0q(self.qvec, self.freq, self.elec_density)
+            filename = "chi0wzz_bulk_"+str(point_dens)+"_"+str(min(omega)*100)+"_"+str(max(omega)*100)+"_"+str(self.nfreq)+"_"+str(d_bulk)+"_"+str(eta)+"_"+str(dens*10000)
+            np.save(filename, self.dens_resp_func_recip)
+        else:
+            self.dens_resp_func_recip = np.load(filename)
+            
+    def get_freq(self):
+        """Return the frequency domain"""
+        return self.freq
+    
+    def get_thickness(self):
+        """Return the size of the bulk"""
+        return self.thickness
+    
+    def get_spat_coord(self):
+        """return the first or second spatial coordinate"""
+        return self.spat_coord
+    
+    def get_nfreq(self):
+        """return the number of frequencies"""
+        return self.nfreq
+    
+    def get_nz(self):
+        """return the number of points used to sample the real space of the first or second spat coord"""
+        return self.n_z
+
+    def get_elec_dens(self):
+        """return the electronic density used"""
+        return self.elec_density
+
+    def get_damping(self):
+        """return the damping in Ha"""
+        return self.damping
+
+    def get_dens_resp_func(self):
+        """return chi0wzz"""
+        return self.dens_resp_func
+
+    def get_dielectric_resp(self):
+        """Return the dielectric response"""
+        if self.dielectric_resp==[]:
+            return jb.epsilon(self.dens_resp_func_recip, self.qvec)
+        else:
+            return self.dielectric_resp
+    
+    def add_dens_resp_func(self):
+        """Computes chi0wgg from chi0qwzz"""
+        self.dens_resp_func = tools.fourier_dir(self.dens_resp_func)
+
+    def add_dielectric_resp(self):
+        """Add the dielectric response"""
+        if self.dens_resp_func_recip == []:
+            self.add_dens_resp_func()
+            self.dielectric_resp = jb.epsilon(self.dens_resp_func_recip, np.real(tools.inv_rev_vec(self.qvec)))
+        else:
+            self.dielectric_resp = jb.epsilon(self.dens_resp_func_recip, np.real(tools.inv_rev_vec(self.qvec)))
+   
+    def add_eigen_values(self):
+        """Computes the eigen values and vector of the dielectric response"""
+        if self.dielectric_resp == []:
+            self.add_dielectric_resp()
+            self.eig_v_eps, self.eig_rvec_eps = np.linalg.eig(self.dielectric_resp)
+        else:
+            self.eig_v_eps, self.eig_rvec_eps = np.linalg.eig(self.dielectric_resp)
+    
+    def add_weight(self):
+        """Computes the weight associated with the different eigen values"""
+        if self.eig_v_eps == []:
+            self.add_eigen_values()
+            self.weight, self.eig_v_eps = ts.weight_majerus(self.dielectric_resp)
+        else:
+            self.weight, self.eig_v_eps = ts.weight_majerus(self.dielectric_resp)
+        
+    def add_loss_func(self):
+        """Computes the loss function of the computed bulk"""
+        self.loss_func = ts.loss_func_majerus(self.weight, self.eig_v_eps)
