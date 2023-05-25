@@ -91,7 +91,7 @@ def weight_majerus_diff(eps_wgg):
         weights_p[i]=np.multiply(vec[0,:],(np.transpose(vec_dual[:,0])))
     return weights_p, eig
 
-@jit(nopython = True, parallel=True)
+
 def weight_full(eps_wgg):
     """Computes the weights as given in the thesis of Kirsten Andersen
     Code adapted from the GPAW software"""
@@ -115,7 +115,7 @@ def weight_full(eps_wgg):
         vec_dual_p = np.linalg.inv(vec_p)
         ####
         overlap = np.abs(np.dot(vec_dual[i-1], vec_p))
-        index = list(np.argsort(overlap, dtype = "c16")[:, -1])
+        index = list(np.argsort(overlap)[:, -1])
         if len(np.unique(index)) < n_q:  # add missing indices
             addlist = []
             removelist = []
@@ -153,9 +153,9 @@ def loss_full_slab_wov(diel, z_2, q_p):
     q_vec = tools.zvec_to_qvec(z_2)
     diel_wov_q = js.fourier_inv(diel_wov, z_2)
     eps = js.epsilon(diel_wov_q, np.real(tools.inv_rev_vec(q_vec)), q_p)
-    weights, eig_q = weight_majerus(eps)
+    weights, eig_q, vec, vec_dual = weight_full(eps)
     loss = loss_func_majerus(weights, eig_q)
-    return loss, weights, eig_q
+    return loss, weights, eig_q, eps, vec, vec_dual
 
 
 def loss_full_slab_wv(diel, z_2, q_p, void):

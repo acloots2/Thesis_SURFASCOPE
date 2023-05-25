@@ -137,7 +137,7 @@ def parity_perm(vec):
         return "even"
 
 
-@jit(nopython = True, parallel=True)
+
 def fourier_dir(matwgg):
     """Performs the Fourier Transform to go from chi0wqq to chi0wzz"""
     n_w, nq1, nq2 = matwgg.shape

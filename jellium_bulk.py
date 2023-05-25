@@ -135,20 +135,20 @@ def epsilon(chi0qgg, q_vec):
         eps_out[i] = np.diag(np.ones(n_q))-np.multiply(coulomb, chi0qgg[i])
     return eps_out
 
-@jit(nopython = True, parallel=True)
-def fourier_dir_wqq(matwqq):
+
+def fourier_dir_wqq(matwqq, d):
     """Performs the Fourier Transform to go from chi0wqq to chi0wzz"""
     n_w, nq1, nq2 = matwqq.shape
     matwzq2 = np.zeros((n_w, nq1, nq2), dtype = "c16")
     for i in range(n_w):
         for j in range(nq1):
-            matwzq2[i, j, :] = np.fft.ifft(matwqq[i, j, :])
+            matwzq2[i, j, :] = np.fft.fft(matwqq[i, j, :])
     matwz1z2 = np.zeros((n_w, nq1, nq2), dtype = "c16")
     for i in range(n_w):
         for j in range(nq2):
-            matwz1z2[i, :, j] = np.fft.ifft(matwzq2[i, :, j])
-    matwz1z2 = matwz1z2*nq2
+            matwz1z2[i, :, j] = np.fft.fft(matwzq2[i, :, j])
+    matwz1z2 = matwz1z2
     matwz1z2_out = np.zeros((n_w, nq1, nq2), dtype = "c16")
-    for i in range(n_w):
-        matwz1z2_out[i] = (matwz1z2[i, :, :]+np.transpose(matwz1z2[i, :, :]))/2
-    return matwz1z2_out
+    """for i in range(n_w):
+        matwz1z2_out[i] = (matwz1z2[i, :, :]+np.transpose(matwz1z2[i, :, :]))/2"""
+    return matwz1z2/d 

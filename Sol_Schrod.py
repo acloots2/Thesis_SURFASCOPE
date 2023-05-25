@@ -11,8 +11,7 @@ def ecin(g_vec):
 
 
 def epot(v_x):
-    n_z = len(v_x)
-    v_g = np.fft.fft(v_x)/n_z
+    v_g = np.fft.ifft(v_x)
     n_g = len(v_g)
     v_gmat = np.zeros((n_g, n_g), dtype = "c16")
     for i in range(n_g):

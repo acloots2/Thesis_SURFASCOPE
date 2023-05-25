@@ -40,11 +40,11 @@ def fourier_inv(chi0wzz, z_vec):
     chi0wzq2 = np.zeros((n_w, nz1, nz2), dtype = "c16")
     for i in range(n_w):
         for j in range(nz1):
-            chi0wzq2[i, j, :] = np.fft.fft(tools.rev_vec(chi0wzz[i, j, :]))
+            chi0wzq2[i, j, :] = np.fft.ifft(chi0wzz[i, j, :], norm = "ortho")
     chi0wq1q2 = np.zeros((n_w, nz1, nz2), dtype = "c16")
     for i in range(n_w):
         for j in range(nz2):
-            chi0wq1q2[i, :, j] = np.fft.fft(tools.inv_rev_vec(chi0wzq2[i, :, j]))
+            chi0wq1q2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j], norm = "ortho")
     return chi0wq1q2/nz2**2*max(z_vec)
 
 @jit(nopython = True, parallel=True)
@@ -97,18 +97,18 @@ def sym_chi_slab_with_void(chi0wzz, z_2, void = 30):
 @jit(nopython = True, parallel=True)
 def chi0wzz_slab_jellium(q_p, z_1, z_2, omega, dens, d_slab, eta, nband):
     """Computes the density response function as found by Eguiluz with the slab represented as an infinite well"""
+    print("Computation with IBM model started")
     n_w = int
     n_z1, n_z2 = int, int
     n_w = len(omega)
     n_z1, n_z2 = len(z_1), len(z_2)
-    e_f = float
+    e_f = "c16"
     nmax = int
-    e_f, nmax = ef_2D(dens, d_slab)
-    print(e_f, nmax)
     chi0wzz = np.zeros((n_w, n_z1, n_z2), dtype = "c16")
     energies = np.zeros((nband))
     for i in range(1, nband):
         energies[i] = 1/2*(i**2*math.pi**2)/d_slab**2
+    e_f, nmax = ef_2D_full(dens, d_slab, energies)
     wf1 = np.zeros((n_z1, nband), dtype = float)
     alpha_band = np.zeros(nband)
     for j in range(1, nband):
@@ -122,7 +122,7 @@ def chi0wzz_slab_jellium(q_p, z_1, z_2, omega, dens, d_slab, eta, nband):
         for j in range(n_z2):
             for k in range(1, nband):
                 wff[i, j, k] = wf1[i, k]*wf2[j,k]
-    wff = (2/d_slab)*wff
+    wff = wff/np.linalg.norm(wf2[:, 1])**2
     wffi = float
     wffj = float
     for i in range(n_w):
@@ -136,8 +136,8 @@ def chi0wzz_slab_jellium(q_p, z_1, z_2, omega, dens, d_slab, eta, nband):
                     wffi = wff[j, k, l]
                     for m in range(1, nband):
                         wffj = wff[j, k, m]
-                        chi0wzz[i, j, k]+=wffi*wffj*fll[l, m]   
-    return chi0wzz
+                        chi0wzz[i, j, k]+=wffi*wffj*fll[l, m] 
+    return chi0wzz*n_z2**2/d_slab**2
 
 
 
@@ -169,35 +169,35 @@ def ef_2D(n, d)-> tuple[float, int]:
     n = n*d
     if n == 0:
         raise ValueError("the fermi level is not uniquely defined if the density is zero")
-    e_max = math.pi**2/(2*d**2)+0.1
-    e_min = math.pi**2/(2*d**2)
-    e_tot = math.pi**2/(2*d**2)
+    e_max = 0.1
+    e_min = 0
+    e_tot = 0
     i = 1
     while e_max > e_min:
         e_max = (math.pi*n + e_tot)/i
         i += 1
         e_min = i**2*math.pi**2/(2*d**2)
         e_tot += e_min
-    return e_max, i-1
+    return e_max, i
 
-
+@jit(nopython = True)
 def ef_2D_full(n, d, e_vec):
     "Find the fermi level in a slab"
     n = n*d
     if n == 0:
         raise ValueError("the fermi level is not uniquely defined if the density is zero")
-    e_max = e_vec[0]+0.1
-    e_min = e_vec[0]
-    e_tot = e_vec[0]
+    e_max = e_vec[1]+0.1
+    e_min = e_vec[1]
+    e_tot = e_vec[1]
     i = 1
-    while e_max > e_min:
+    while np.real(e_max) > np.real(e_min):
         e_max = (math.pi*n + e_tot)/i
         i += 1
         if i > len(e_vec-1):
             raise ValueError("Number of states too low, you should add more states in order to find the Fermi level")
         e_min = e_vec[i]
         e_tot += e_min
-    return e_max, i-1
+    return e_max, i
 
 
 def fourier_dir(epsqwgg):
@@ -313,19 +313,24 @@ def pre_run_chi0(v_pot, z_vec, dens, d_sys):
     index = list(np.argsort(energies))
     bands_sorted = bands[:, index]
     energies = (energies[index])
+    energies = np.append(np.array([0]),energies)
     #print(energies, d_sys, dens)
     e_f, nmax = ef_2D_full(dens, d_sys, energies)
     bands_z = np.zeros((bands.shape), dtype = "c16")
     for i in range(n_z):
-        bands_z[:, i] = np.fft.fft((bands_sorted[:, i]))
+        bands_z[:, i] = np.fft.ifft((bands_sorted[:, i]))*math.sqrt(n_z)
     return energies, bands_z, e_f, nmax
 
 @jit(debug = True, nopython = True, parallel=True)
-def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, eta):
+def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sys, eta):
     """Computes the density response function as found by Eguiluz with the slab represented as an infinite well"""
+    print("Computation from potential started")
     n_w = len(omega)
+    energies = energies[1::]
+    nmax = nmax-1
     n_z = len(energies)
-    chi0wzz = np.zeros((n_w, math.ceil(n_z/2), n_z), dtype = "c16")
+    n_half = math.ceil(n_z/2)
+    chi0wzz = np.zeros((n_w, n_half, n_z), dtype = "c16")
     wff = np.zeros((n_z, n_z, n_z), dtype = "c16")
     for i in range(n_z):
         for j in range(n_z):
@@ -336,14 +341,14 @@ def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, eta)
         for j in range(nmax):
             for k in range(n_z):
                 fll[j, k] = f_ll_pot(q_p, omega[i], energies[j], energies[k], e_f, eta)
-        for j in range(math.ceil(n_z/2)):
+        for j in range(n_half):
             for k in range(n_z):
                 for l in range(nmax):
                     wffi = wff[j, k, l]
                     for m in range(n_z):
                         wffj = wff[j, k, m]
                         chi0wzz[i, j, k]+=wffi*wffj*fll[l, m]  
-    return chi0wzz
+    return chi0wzz*n_z**2/d_sys**2
 
 @jit(debug = True, nopython = True)
 def a_ll_pot(q_p, e_l1, e_l2):
