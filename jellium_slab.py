@@ -40,12 +40,12 @@ def fourier_inv(chi0wzz, z_vec):
     chi0wzq2 = np.zeros((n_w, nz1, nz2), dtype = "c16")
     for i in range(n_w):
         for j in range(nz1):
-            chi0wzq2[i, j, :] = np.fft.ifft(chi0wzz[i, j, :], norm = "ortho")
+            chi0wzq2[i, j, :] = np.fft.fft(chi0wzz[i, j, :], norm = "ortho")
     chi0wq1q2 = np.zeros((n_w, nz1, nz2), dtype = "c16")
     for i in range(n_w):
         for j in range(nz2):
             chi0wq1q2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j], norm = "ortho")
-    return chi0wq1q2/nz2**2*max(z_vec)
+    return chi0wq1q2/nz2*max(z_vec)**2
 
 @jit(nopython = True, parallel=True)
 def sym_chi_slab(chi0wzz):
@@ -186,18 +186,18 @@ def ef_2D_full(n, d, e_vec):
     n = n*d
     if n == 0:
         raise ValueError("the fermi level is not uniquely defined if the density is zero")
-    e_max = e_vec[1]+0.1
-    e_min = e_vec[1]
-    e_tot = e_vec[1]
+    e_max = e_vec[0]+0.1
+    e_min = e_vec[0]
+    e_tot = e_vec[0]
     i = 1
     while np.real(e_max) > np.real(e_min):
         e_max = (math.pi*n + e_tot)/i
-        i += 1
-        if i > len(e_vec-1):
+        if i > len(e_vec):
             raise ValueError("Number of states too low, you should add more states in order to find the Fermi level")
         e_min = e_vec[i]
         e_tot += e_min
-    return e_max, i
+        i += 1
+    return e_max, i-1
 
 
 def fourier_dir(epsqwgg):
@@ -313,41 +313,48 @@ def pre_run_chi0(v_pot, z_vec, dens, d_sys):
     index = list(np.argsort(energies))
     bands_sorted = bands[:, index]
     energies = (energies[index])
-    energies = np.append(np.array([0]),energies)
-    #print(energies, d_sys, dens)
+    #energies = np.append(np.array([0]),energies)
     e_f, nmax = ef_2D_full(dens, d_sys, energies)
     bands_z = np.zeros((bands.shape), dtype = "c16")
     for i in range(n_z):
-        bands_z[:, i] = np.fft.ifft((bands_sorted[:, i]))*math.sqrt(n_z)
+        bands_z[:, i] = np.fft.ifft((bands_sorted[:, i]))
+        bands_z[:, i] = bands_z[:, i]/np.linalg.norm(bands_z[:, i])
     return energies, bands_z, e_f, nmax
 
 @jit(debug = True, nopython = True, parallel=True)
 def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sys, eta):
     """Computes the density response function as found by Eguiluz with the slab represented as an infinite well"""
-    print("Computation from potential started")
+    #print("Computation from potential started")
     n_w = len(omega)
-    energies = energies[1::]
-    nmax = nmax-1
+    #energies = energies[1::]
+    #nmax = nmax-1
     n_z = len(energies)
     n_half = math.ceil(n_z/2)
     chi0wzz = np.zeros((n_w, n_half, n_z), dtype = "c16")
     wff = np.zeros((n_z, n_z, n_z), dtype = "c16")
+    #wff2 = np.zeros((n_z, n_z, n_z), dtype = "c16")
     for i in range(n_z):
         for j in range(n_z):
             for k in range(n_z):
-                wff[i, j, k] = bands_z[i, k]*bands_z[j,k]
+                wff[i, j, k] = bands_z[i, k]*np.conj(bands_z[j,k])
+                #wff1[i, j, k] = np.conj(bands_z[i, k])*bands_z[j,k]
+                #wff2[i, j, k] = bands_z[i, k]*np.conj(bands_z[j,k])
+    nband_tot = 4*nmax
     for i in range(n_w):
-        fll = np.zeros((nmax, n_z), dtype = "c16")
+        fll = np.zeros((nmax, nband_tot), dtype = "c16")
         for j in range(nmax):
-            for k in range(n_z):
+            for k in range(4*nmax):
                 fll[j, k] = f_ll_pot(q_p, omega[i], energies[j], energies[k], e_f, eta)
         for j in range(n_half):
             for k in range(n_z):
                 for l in range(nmax):
-                    wffi = wff[j, k, l]
-                    for m in range(n_z):
+                    wffi = np.conj(wff[j, k, l])
+                    #wffi2 = wff2[j, k, l]
+                    for m in range(nband_tot):
                         wffj = wff[j, k, m]
-                        chi0wzz[i, j, k]+=wffi*wffj*fll[l, m]  
+                        #wffj2 = np.conj(wff2[j, k, m])
+                        chi0wzz[i, j, k]+=(wffi*wffj)*fll[l, m]
+                        #chi0wzz[i, j, k]+=(wffi1*wffj1+wffi2*wffj2)*fll[l, m]/2 
     return chi0wzz*n_z**2/d_sys**2
 
 @jit(debug = True, nopython = True)

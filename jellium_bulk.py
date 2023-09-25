@@ -76,30 +76,7 @@ def chi0_mat(chi0_q):
         chi0_qq[i] = np.diag(chi0_q[i])
     return chi0_qq   
 
-#A Refaire sans doute
-@jit(nopython = True, parallel=True)
-def chiq(chi0_q, q_vec, q_p, opt = "positive"):
-    """Computes the density response function with coulomb effect with a vector as input.
-    Option are "positive" with q values from 0 to q_max or "symmetric" with values
-    from -q_max to q_max"""
-    n_w, n_q = chi0_q.shape[0], chi0_q.shape[1]
-    chiq_m = np.zeros((n_w, n_q), dtype = "c16")
-    coulomb = np.zeros((n_q))
-    if opt == "positive" and q_p != 0:
-        coulomb = 4*math.pi*np.power(np.abs(q_vec+q_p), -2)
-    elif opt == "positive" and q_p == 0:
-        coulomb[1:n_q] = 4*math.pi*np.power(np.abs(q_vec[1:n_q]), -2)
-    elif opt == "symmetric" and q_p == 0:
-        q_vec = np.real(tools.inv_rev_vec(q_vec))
-        coulomb[1:n_q] = 4*math.pi*np.power(np.abs(q_vec[1:n_q]), -2)
-    else:
-        q_vec = np.real(tools.inv_rev_vec(q_vec))
-        coulomb = 4*math.pi*np.power(np.abs(q_vec+q_p), -2)
-    for i in range(n_w):
-        for j in range(1, n_q):
-            chiq_inv = np.power(np.diag(chi0_q[i])[j], -1, dtype="c16")-coulomb[j]
-            chiq_m[i, j] = np.power(chiq_inv, -1, dtype="c16")
-    return chiq_m
+
 
 @jit(nopython = True, parallel=True)
 def chiq_mat(chi0_q, q_vec):
@@ -112,13 +89,15 @@ def chiq_mat(chi0_q, q_vec):
             continue
         coulomb[i, i] = 4*math.pi/(q_vec[i]**2)
     #print(np.diag(coulomb))
+    print("coulomb ok")
     chi_to_inv = np.zeros((n_q, n_q), dtype = "c16")
     for i in range(n_w):
         for j in range(n_q):
             if chi0_q[i, j, j] == 0:
                 chiq_m[i, j, j] = chi0_q[i, j, j]
-            chi_to_inv[j, j] = (chi0_q[i, j, j])**(-1)-coulomb[j, j]
-            chiq_m[i, j, j] = chi_to_inv[j, j]**(-1)
+            else:
+                chi_to_inv[j, j] = (chi0_q[i, j, j])**(-1)-coulomb[j, j]
+                chiq_m[i, j, j] = chi_to_inv[j, j]**(-1)
     return chiq_m
 
 @jit(nopython = True, parallel=True)
@@ -152,3 +131,29 @@ def fourier_dir_wqq(matwqq, d):
     """for i in range(n_w):
         matwz1z2_out[i] = (matwz1z2[i, :, :]+np.transpose(matwz1z2[i, :, :]))/2"""
     return matwz1z2/d 
+
+
+#A Refaire sans doute
+"""@jit(nopython = True, parallel=True)
+def chiq(chi0_q, q_vec, q_p, opt = "positive"):
+    Computes the density response function with coulomb effect with a vector as input.
+    Option are "positive" with q values from 0 to q_max or "symmetric" with values
+    from -q_max to q_max
+    n_w, n_q = chi0_q.shape[0], chi0_q.shape[1]
+    chiq_m = np.zeros((n_w, n_q), dtype = "c16")
+    coulomb = np.zeros((n_q))
+    if opt == "positive" and q_p != 0:
+        coulomb = 4*math.pi*np.power(np.abs(q_vec+q_p), -2)
+    elif opt == "positive" and q_p == 0:
+        coulomb[1:n_q] = 4*math.pi*np.power(np.abs(q_vec[1:n_q]), -2)
+    elif opt == "symmetric" and q_p == 0:
+        q_vec = np.real(tools.inv_rev_vec(q_vec))
+        coulomb[1:n_q] = 4*math.pi*np.power(np.abs(q_vec[1:n_q]), -2)
+    else:
+        q_vec = np.real(tools.inv_rev_vec(q_vec))
+        coulomb = 4*math.pi*np.power(np.abs(q_vec+q_p), -2)
+    for i in range(n_w):
+        for j in range(1, n_q):
+            chiq_inv = np.power(np.diag(chi0_q[i])[j], -1, dtype="c16")-coulomb[j]
+            chiq_m[i, j] = np.power(chiq_inv, -1, dtype="c16")
+    return chiq_m"""

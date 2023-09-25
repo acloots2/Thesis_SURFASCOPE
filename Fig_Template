@@ -1,0 +1,68 @@
+
+##Loss Function
+fig = go.Figure()
+xtitle = r'$\omega$'
+ytitle = r'$L(\omega)$'
+title = r'Loss functions for different perturbations (potential method)'
+
+X = omega*27.211
+Y = np.real(loss1)
+Name = "Pot0"
+fig.add_trace(go.Scatter(x = X, y = Y, name = Name, mode = "lines+markers",marker=dict(
+    size=5,
+    ),))
+
+fig.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
+        yaxis_title = ytitle,paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
+fig.show()
+
+
+
+##DRF in Direct Space
+fig = go.Figure()
+xtitle = r'$z$'
+ytitle = r'$\chi^0$'
+title = r'Density Response Function Direct Space'
+
+X = tools.center_z(z_pot1)
+Y = np.real(chi0_pot1[0, math.ceil(len(z_pot1)/2)-1, :])
+Name = "Pot0"
+fig.add_trace(go.Scatter(x = X, y = Y, name = Name, mode = "lines+markers",marker=dict(
+    size=5,
+    ),))
+
+fig.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
+        yaxis_title = ytitle,paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
+fig.show()
+
+
+##DRF in reciprocal Space
+fig = go.Figure()
+xtitle = r'$q$'
+ytitle = r'$\chi^0$'
+title = r'Density Response Function Reciprocal Space'
+
+X = q1
+Y = np.real(tools.rev_vec(chi01_diag[0, :]))
+Name = "Pot1"
+fig.add_trace(go.Scatter(x = X, y = Y, name = Name, mode = "lines+markers",marker=dict(
+    size=5,
+    ),))
+
+
+
+fig.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
+        yaxis_title = ytitle,paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
+fig.show()
+
+
+##Pot Used
+fig = go.Figure()
+xtitle = r"$z$"
+ytitle = r"$V(z)$"
+fig1.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(v_pot), name = "Potential", mode = "lines+markers",marker=dict(
+    size=5,
+    ),))
+fig1.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
+    yaxis_title = ytitle, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
+fig.show()
