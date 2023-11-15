@@ -322,15 +322,14 @@ def pre_run_chi0(v_pot, z_vec, dens, d_sys):
     return energies, bands_z, e_f, nmax
 
 @jit(debug = True, nopython = True, parallel=True)
-def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sys, eta):
+def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sys, eta, sym = True):
     """Computes the density response function as found by Eguiluz with the slab represented as an infinite well"""
     #print("Computation from potential started")
     n_w = len(omega)
     #energies = energies[1::]
     #nmax = nmax-1
     n_z = len(energies)
-    n_half = math.ceil(n_z/2)
-    chi0wzz = np.zeros((n_w, n_half, n_z), dtype = "c16")
+    
     wff = np.zeros((n_z, n_z, n_z), dtype = "c16")
     #wff2 = np.zeros((n_z, n_z, n_z), dtype = "c16")
     for i in range(n_z):
@@ -340,6 +339,11 @@ def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sy
                 #wff1[i, j, k] = np.conj(bands_z[i, k])*bands_z[j,k]
                 #wff2[i, j, k] = bands_z[i, k]*np.conj(bands_z[j,k])
     nband_tot = 4*nmax
+    if sym:
+        n_half = math.ceil(n_z/2)
+    else:
+        n_half = n_z
+    chi0wzz = np.zeros((n_w, n_half, n_z), dtype = "c16")
     for i in range(n_w):
         fll = np.zeros((nmax, nband_tot), dtype = "c16")
         for j in range(nmax):

@@ -135,6 +135,15 @@ def parity_perm(vec):
         return "odd"
     else:
         return "even"
+    
+def density(energies, bands, e_f, point_dens = 1):
+    index = 0
+    npnt = len(energies)
+    dens = np.zeros((npnt), dtype = complex)
+    while energies[index] < e_f:
+        dens += (e_f-energies[index])*bands[:, index]*np.conj(bands[:, index])
+        index += 1
+    return 1/math.pi*dens*point_dens
 
 
 
