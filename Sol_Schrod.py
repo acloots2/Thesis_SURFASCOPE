@@ -6,7 +6,6 @@ import tools
 
 def ecin(g_vec):
     g_vec = np.real(tools.inv_rev_vec(g_vec))
-    #print(g_vec)
     return np.diag(g_vec**2/2)
 
 
@@ -20,15 +19,16 @@ def epot(v_x):
     return v_gmat
 
 
-def Hamitonian(v_x, z_vec):
+def Hamiltonian(v_x, z_vec):
     g_v = tools.zvec_to_qvec(z_vec)
     e_cin = ecin(g_v)
     e_pot = epot(v_x)
-    return e_cin+e_pot
+    e_tot = e_cin+e_pot
+    return (e_tot+np.conj(np.transpose(e_tot)))/2
 
 
 def eig_energie(v_x, z_vec):
-    ham = Hamitonian(v_x, z_vec)
-    eig_v, eig_f = np.linalg.eig(ham)
+    ham = Hamiltonian(v_x, z_vec)
+    eig_v, eig_f = np.linalg.eigh(ham)
     return eig_v, eig_f 
 

@@ -60,9 +60,9 @@ fig.show()
 fig = go.Figure()
 xtitle = r"$z$"
 ytitle = r"$V(z)$"
-fig1.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(v_pot), name = "Potential", mode = "lines+markers",marker=dict(
+fig.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(v_pot), name = "Potential", mode = "lines+markers",marker=dict(
     size=5,
     ),))
-fig1.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
+fig.update_layout(title_text = title, title_x=0.5,xaxis_title= xtitle,
     yaxis_title = ytitle, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',)
 fig.show()

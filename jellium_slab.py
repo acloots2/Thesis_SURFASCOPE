@@ -45,7 +45,7 @@ def fourier_inv(chi0wzz, z_vec):
     for i in range(n_w):
         for j in range(nz2):
             chi0wq1q2[i, :, j] = np.fft.ifft(chi0wzq2[i, :, j], norm = "ortho")
-    return chi0wq1q2/nz2*max(z_vec)**2
+    return chi0wq1q2/nz2*max(z_vec)
 
 @jit(nopython = True, parallel=True)
 def sym_chi_slab(chi0wzz):
@@ -63,7 +63,31 @@ def sym_chi_slab(chi0wzz):
         return chi0wzz_slab
 
 
- 
+#@jit(nopython = True, parallel=True)
+def dyson_chi(chi_0, chi, coulomb_2d, z_pot):
+    dz = np.abs(z_pot[1]-z_pot[0])
+    nz = len(z_pot)
+    nw = chi_0.shape[0]
+    int_sum = np.zeros((nw, nz, nz), dtype = "c16")
+    for i in range(nw):
+        int_sum1 = np.zeros((nz, nz), dtype = "c16")
+        int_sum2 = np.zeros((nz, nz), dtype = "c16")
+        for j in range(nz):
+            for k in range(nz):
+                int_sum1[j, k] = np.sum(np.multiply(coulomb_2d[:, j], chi[i, k, :]))
+        for j in range(nz):
+            for k in range(nz):
+                int_sum2[j, k] = np.sum(np.multiply(chi_0[i, :, j], coulomb_2d[k, :]))
+        int_sum[i] = chi_0[i]+int_sum2*dz**2
+    return int_sum
+
+def sc_dyson_chi(chi_0, coulomb_2d, z_pot):
+    index = 0
+    chi = dyson_chi(chi_0, chi_0, coulomb_2d, z_pot)
+    while index<1:
+        chi = dyson_chi(chi_0, chi, coulomb_2d, z_pot)
+        index +=1
+    return chi
 
 
 @jit(nopython = True, parallel=True)
@@ -318,7 +342,9 @@ def pre_run_chi0(v_pot, z_vec, dens, d_sys):
     bands_z = np.zeros((bands.shape), dtype = "c16")
     for i in range(n_z):
         bands_z[:, i] = np.fft.ifft((bands_sorted[:, i]))
-        bands_z[:, i] = bands_z[:, i]/np.linalg.norm(bands_z[:, i])
+        N = tools.func_norm(z_vec, bands_z[:, i])
+        bands_z[:, i] = bands_z[:, i]/N
+        #bands_z[:, i] = bands_z[:, i]/np.linalg.norm(bands_z[:, i])
     return energies, bands_z, e_f, nmax
 
 @jit(debug = True, nopython = True, parallel=True)
@@ -359,7 +385,8 @@ def chi0wzz_slab_jellium_with_pot(q_p, energies, bands_z, omega, e_f, nmax, d_sy
                         #wffj2 = np.conj(wff2[j, k, m])
                         chi0wzz[i, j, k]+=(wffi*wffj)*fll[l, m]
                         #chi0wzz[i, j, k]+=(wffi1*wffj1+wffi2*wffj2)*fll[l, m]/2 
-    return chi0wzz*n_z**2/d_sys**2
+    #chi0wzz = chi0wzz*n_z**2/d_sys**2                    
+    return chi0wzz
 
 @jit(debug = True, nopython = True)
 def a_ll_pot(q_p, e_l1, e_l2):

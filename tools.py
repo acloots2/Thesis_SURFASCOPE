@@ -1,6 +1,7 @@
 """Set of functions that are useful to manipulate vectors for figures or Fourier Transform"""
 
 import math
+import cmath
 import numpy as np
 import numba
 from numba import jit
@@ -143,9 +144,11 @@ def density(energies, bands, e_f, point_dens = 1):
     while energies[index] < e_f:
         dens += (e_f-energies[index])*bands[:, index]*np.conj(bands[:, index])
         index += 1
-    return 1/math.pi*dens*point_dens
+    return 1/math.pi*dens
 
-
+@jit(nopython = True, parallel=True)
+def func_norm(x, fx):
+    return cmath.sqrt(np.sum(np.multiply(np.conj(fx), fx))*np.abs(x[0]-x[1]))
 
 def fourier_dir(matwgg):
     """Performs the Fourier Transform to go from chi0wqq to chi0wzz"""
@@ -187,3 +190,31 @@ def coulomb(q_vec, q_p):
     else:
         coulomb_vec = np.power(np.power(q_vec, 2)+q_p**2, -1)
     return coulomb_vec
+
+def shift(chi_0):
+    nw, nz = chi_0.shape[0], chi_0.shape[1]
+    nz_half = round(math.ceil(nz/2))
+    chi0_shift1 = np.zeros((nw, nz, nz), dtype = complex)
+    for i in range(nw):
+        for j in range(nz):
+            chi0_shift1[i, j, 0:nz_half] = chi_0[i, j, -nz_half::]
+            chi0_shift1[i, j, -nz_half+1::] = chi_0[i, j, 0:nz_half-1]
+    chi0_shift2 = np.zeros((nw, nz, nz), dtype = complex)
+    for i in range(nw):
+        for j in range(nz):
+            chi0_shift2[i, 0:nz_half, j] = chi0_shift1[i, -nz_half::, j]
+            chi0_shift2[i, -nz_half+1::, j] = chi0_shift1[i, 0:nz_half-1, j]
+    return chi0_shift2
+
+def shift_c(coulomb_2d):
+    nz = coulomb.shape[0]
+    nz_half = round(math.ceil(nz/2))
+    coulomb_shift1 = np.zeros((nz, nz), dtype = complex)
+    for j in range(nz):
+        coulomb_shift1[j, 0:nz_half] = coulomb_2d[j, -nz_half::]
+        coulomb_shift1[j, -nz_half+1::] = coulomb_2d[j, 0:nz_half-1]
+    coulomb_shift2 = np.zeros((nz, nz), dtype = complex)
+    for j in range(nz):
+        coulomb_shift2[0:nz_half, j] = coulomb_shift1[-nz_half::, j]
+        coulomb_shift2[-nz_half+1::, j] = coulomb_shift1[0:nz_half-1, j]
+    return coulomb_shift2

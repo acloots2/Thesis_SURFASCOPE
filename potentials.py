@@ -23,7 +23,7 @@ def square_well_pot(d_wall, void, well_height, point_dens):
     nvoid = round(void*point_dens)
     v_pot[0:nvoid] = well_height
     v_pot[-nvoid::] = well_height
-    z_pot = np.linspace(0, d_sys, npnt)
+    z_pot = np.linspace(-d_sys/2, d_sys/2, npnt)
     return v_pot, z_pot
 
 def square_well(d_wall, void, well_top, well_bottom, point_dens):
@@ -151,7 +151,30 @@ def triple_well(d_wall_1, d_wall_2, d_wall_3, void, d_space_1, d_space_2, well_b
     pot_vec[slab2:slab2+npnt_slab_3] = well_b3
     pot_vec[-npnt_void::] = well_t4
     z_vec = np.linspace(0, d_tot, npnt)
-    return pot_vec, z_vec, d_tot
+    return pot_vec, z_vec
+
+def spline_solv(x1, y1, x2, y2):
+    A = np.array([[x1**3, x1**2, x1, 1], [x2**3, x2**2, x2, 1], [3*x1**2, 2*x1, 1, 0], [3*x2**2, 2*x2, 1, 0]])
+    b = np.array([y1, y2, 0, 0])
+    return np.linalg.solve(A, b)
+
+def smooth_pot(x1, y1, x2, y2, z_vec):
+    nz = len(z_vec)
+    c = spline_solv(x1, y1, x2, y2)
+    pot = np.zeros(nz)
+    for i in range(nz):
+        if z_vec[i]< x1:
+            pot[i] = y1
+        elif z_vec[i] < x2:
+            x = z_vec[i]
+            pot[i] = c[0]*x**3+c[1]*x**2+c[2]*x+c[3]
+        else:
+            pot[i] = y2
+    pot_out = np.zeros(nz*2-1)
+    pot_out[0:nz] = pot[::-1]
+    pot_out[nz::] = pot[1::]
+    z_out = np.linspace(0, 2*max(z_vec), 2*nz-1)
+    return z_out,pot_out
     
     
   

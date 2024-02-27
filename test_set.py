@@ -21,6 +21,8 @@ def weight_majerus(eps_wgg):
     vec_dual = np.diag(np.ones(n_q))
     eps_gg = eps_wgg[0]
     eig_all[0], vec_p = np.linalg.eig(eps_gg)
+    for i in range(len(vec_p[0, :])):
+        vec_p[:, i] = vec_p[i]    
     vec_dual_p = np.linalg.inv(vec_p)
     vec_dual_p = vec_dual_p/np.linalg.norm(vec_dual_p[0, :])
     vec_dual = vec_dual_p
@@ -146,6 +148,45 @@ def weight_full_pause(eps_wgg):
         weights_p[i]=np.multiply(vec[i, 0,:],(np.transpose(vec_dual[i, :,0])))
     return weights_p, eig, vec, vec_dual
 
+#@jit(nopython = True, parallel=True)
+def weight_full_test(eps_wgg, q_vec):
+    """Computes the weights as given in the thesis of Kirsten Andersen
+    Code adapted from the GPAW software"""
+    n_w, n_q = eps_wgg.shape[0], eps_wgg.shape[1]
+    weights_p = np.zeros((n_w, n_q), dtype = "c16")
+    eig_all = np.zeros((n_w, n_q), dtype = "c16")
+    eig = np.zeros((n_w, n_q), dtype = "c16")
+    vec_dual = np.zeros((n_w, n_q, n_q), dtype = "c16")
+    vec = np.zeros((n_w, n_q, n_q), dtype = "c16")
+    vec_dual[0] = np.diag(np.ones(n_q))
+    eps_gg = eps_wgg[0]
+    eig_all[0], vec_p = np.linalg.eig(eps_gg)
+    for i in range(n_q):
+        vec_p[:, i] = vec_p[:, i]/tools.func_norm(q_vec, vec_p[:, i])
+    vec_dual_p = np.linalg.inv(vec_p)
+    for i in range(n_q):
+        vec_dual_p[i, :] = vec_dual_p[i, :]/tools.func_norm(q_vec, vec_dual_p[i, :])
+    #vec_dual_p = vec_dual_p/np.linalg.norm(vec_dual_p[0, :])
+    vec_dual[0] = vec_dual_p
+    vec[0] = vec_p
+    eig[0] = eig_all[0, :]
+    weights_p[0]=np.multiply(vec[0, 0,:],(np.transpose(vec_dual[0, :,0])))
+    for i in range(1, n_w):
+        eps_gg = eps_wgg[i]
+        eig_all[i], vec_p = np.linalg.eig(eps_gg)
+        for j in range(n_q):
+            vec_p[:, j] = vec_p[:, j]/tools.func_norm(q_vec, vec_p[:, j])
+        vec_dual_p = np.linalg.inv(vec_p)
+        for j in range(n_q):
+            vec_dual_p[j, :] = vec_dual_p[j, :]/tools.func_norm(q_vec, vec_dual_p[j, :])
+        ####
+        vec[i] = vec_p
+        vec_dual[i] = vec_dual_p
+        eig[i] = eig_all[i]
+        weights_p[i]=np.multiply(vec[i, 0,:],(np.transpose(vec_dual[i, :,0])))
+    return weights_p, eig, vec, vec_dual
+
+
 @jit(nopython = True, parallel=True)
 def weight_full(eps_wgg):
     """Computes the weights as given in the thesis of Kirsten Andersen
@@ -180,6 +221,8 @@ def weight_full(eps_wgg):
         weights_p[i]=np.multiply(vec[i, 0,:],(np.transpose(vec_dual[i, :,0])))
     return weights_p, eig, vec, vec_dual
 
+
+
 @jit(nopython = True, parallel=True)
 def loss_func_majerus(weights_p, eig):
     """Computes the loss function as given in the thesis of Bruno Majerus"""
@@ -191,6 +234,16 @@ def loss_func_majerus(weights_p, eig):
         loss_func += np.multiply(loss_func_i, weight_i)
     return loss_func
 
+
+def loss_full_slab_wov_test(diel, z_2, q_p):
+    """Gives the spectra from the density response function"""
+    diel_wov = js.sym_chi_slab(diel)
+    q_vec = tools.zvec_to_qvec(z_2)
+    diel_wov_q = js.fourier_inv(diel_wov, z_2)
+    eps = js.epsilon(diel_wov_q, np.real(tools.inv_rev_vec(q_vec)), q_p)
+    weights, eig_q, vec, vec_dual = weight_full(eps, q_vec)
+    loss = loss_func_majerus(weights, eig_q)
+    return loss, weights, eig_q, eps, vec, vec_dual
 
 def loss_full_slab_wov(diel, z_2, q_p):
     """Gives the spectra from the density response function"""
