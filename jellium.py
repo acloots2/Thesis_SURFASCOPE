@@ -17,18 +17,16 @@ import jellium_slab as js
 import test_set as ts
 
 
+### System function
+def find_well_width(z_vec, pot):
+    if np.min(pot) == 0:
+        index = np.argwhere(pot-np.max(pot))
+    else:
+        index = np.argwhere(pot)
+    z_out = z_vec[index]
+    return np.max(z_out)-np.min(z_out), len(index)
 
-
-
-
-def radius_jellium(dens_elec, dimension = 3):
-    if dimension == 3:
-        return (3/(4*math.pi*dens_elec))**(1/3)
-    elif dimension == 2:
-        return np.power(1/math.pi*np.power(dens_elec, -1), 1/2)
-    else: 
-        return 1/(2*dens_elec) 
-    
+### Density definitions
 def background_dens(v_pot, dens_sys, d):
     if np.min(v_pot) == 0:
         index = np.argwhere(v_pot-np.max(v_pot))
@@ -40,6 +38,31 @@ def background_dens(v_pot, dens_sys, d):
     bg[index] = bg_ones[index]
     dens_bg = bg*d*dens_sys/np.sum(bg)
     return dens_bg
+
+def smooth_background_dens(x1, y1, x2, y2, z_vec, d, dens_elec):
+    nz = len(z_vec)
+    delta = np.abs(z_vec[1]-z_vec[0])
+    if type(dens_elec)==float:
+        d_tot = d*dens_elec
+    else:
+        d_tot = np.sum(dens_elec)*delta
+    c = potentials.spline_solv(x1, y1, x2, y2)
+    pot = np.zeros(nz)
+    for i in range(nz):
+        if z_vec[i]< x1:
+            pot[i] = y1
+        elif z_vec[i] < x2:
+            x = z_vec[i]
+            pot[i] = c[0]*x**3+c[1]*x**2+c[2]*x+c[3]
+        else:
+            pot[i] = y2
+    pot_out = np.zeros(nz*2-1)
+    pot_out[0:nz] = pot[::-1]
+    pot_out[nz::] = pot[1::]
+    pot_out = pot_out/np.sum(pot_out*delta)
+    pot_out = pot_out*d_tot
+    z_out = np.linspace(0, 2*max(z_vec), 2*nz-1)
+    return z_out,pot_out
 
 def density(energies, bands, e_f):
     index = 0
@@ -53,20 +76,54 @@ def density(energies, bands, e_f):
         index += 1
     return 1/math.pi*dens
 
-def kinetic_energy_test(bands, nband_occ, z_vec):
+### Potential definitions
+
+#xc potential
+def xc_pot(dens_elec):
+    dens_inv = np.power(dens_elec, -1/3)
+    A = -(0.0595536*np.power(dens_inv, 2)+24.3776*dens_inv+239.561)
+    B = np.power((1.2407*dens_inv+15.6), 2)*dens_inv
+    return np.divide(A, B)
+
+def electrostatic_pot(x, elec_dens, bg_dens):
+    npnt = len(elec_dens)
+    elec_pot = np.zeros(npnt, dtype = complex)
+    delta_dens = elec_dens-bg_dens
+    dz = np.zeros((npnt, npnt))
+    for i in range(npnt):
+        for j in range(npnt):
+            dz[i, j] = np.abs(x[i]-x[j])
+    elec_pot = np.matmul(dz, delta_dens)
+    elec_pot = (elec_pot+elec_pot[::-1])/2
+    return -2*math.pi*elec_pot
+
+
+
+
+
+
+
+### Energy definitions
+def radius_jellium(dens_elec, dimension = 3):
+    if dimension == 3:
+        return (3/(4*math.pi*dens_elec))**(1/3)
+    elif dimension == 2:
+        return np.power(1/math.pi*np.power(dens_elec, -1), 1/2)
+    else: 
+        return 1/(2*dens_elec) 
+    
+
+
+def kinetic_energy(bands, nband_occ, z_vec):
+    #Computed as 1/2*sum_i^{occ}\int\phi_i^*\nabla\phi_i*dz
     e_kin = 0
     for i in range(nband_occ):
         band_grad = np.gradient(bands[:, i], z_vec)
         band_grad = np.gradient(band_grad, z_vec)
-        e_kin += -np.sum(np.multiply(np.conj(bands[:, i]), band_grad))
+        e_kin += -np.dot(np.conj(bands[:, i]), band_grad)
     return e_kin/2*np.abs(z_vec[0]-z_vec[1])
 
-def kinetic_energy(bands, nband_occ, z_vec):
-    e_kin = 0
-    for i in range(nband_occ):
-        band_grad = np.gradient(bands[:, i], z_vec)
-        e_kin += np.sum(np.multiply(np.conj(band_grad), band_grad))
-    return e_kin/2*np.abs(z_vec[0]-z_vec[1])
+
 
 #xc energy/electron
 def e_xc(dens_elec, dimension = 3):
@@ -85,61 +142,18 @@ def xc_Energy(dens_elec, z_vec):
     Exc = np.dot(exc, dens_elec)
     return Exc*np.abs(z_vec[0]-z_vec[1])
 
+
 def xc_energy(vxc_pot, dens_elec, delta):
-    return np.sum(np.multiply(vxc_pot, dens_elec))*delta
-
-
-#xc potential
-def xc_pot(dens_elec):
-    dens_inv = np.power(dens_elec, -1/3)
-    A = -(0.0595536*np.power(dens_inv, 2)+24.3776*dens_inv+239.561)
-    B = np.power((1.2407*dens_inv+15.6), 2)*dens_inv
-    return np.divide(A, B)
+    # Computed as \int V_xc*n(z)dz
+    return np.dot(vxc_pot, dens_elec)*delta
 
 def pot_energy(xc_vec, hartree_vec, dens_elec, delta):
     tot_pot = xc_vec+hartree_vec
-    return np.sum(np.multiply(tot_pot, dens_elec))*delta
-
-
-
-def solve_pot(pot, z):
-    dz = np.abs(z[1]-z[0])
-    pot_prime = (pot[2]-pot[1])/dz
-    pot_sec = (pot[2]-2*pot[1]+pot[0])/dz**2
-    x1 = z[2]
-    x2 = z[4]
-    y1 = pot[2]
-    y2 = pot[4]
-    A = np.array([[x1**3, x1**2, x1, 1], [3*x1**2, 2*x1, 1, 0], [6*x1, 2, 0, 0], [x2**3, x2**2, x2, 1]])
-    b = np.array([y1, pot_prime, pot_sec, y2])
-    return np.linalg.solve(A, b)
-
-#hartree energy
-def hartree_energy_t(elec_dens, bg_dens, z_vec):
-    npnt = len(elec_dens)
-    delta_dens = elec_dens-bg_dens
-    dz = np.zeros((npnt, npnt))
-    #delta_dens = np.matmul(np.transpose(np.array([delta_dens])), np.array([delta_dens]))
-    for i in range(npnt):
-        for j in range(npnt):
-            dz[i, j] = np.abs(z_vec[i]-z_vec[j])
-    return -math.pi*np.matmul(np.matmul(dz, delta_dens)*np.abs(z_vec[0]-z_vec[1]), np.transpose(delta_dens))*np.abs(z_vec[0]-z_vec[1])
+    return np.dot(tot_pot, dens_elec)*delta
 
 def hartree_energy(vh_pot, dens_elec, delta):
-    return np.sum(np.multiply(vh_pot, dens_elec))*delta
-
-#
-def electrostatic_pot(x, elec_dens, bg_dens):
-    npnt = len(elec_dens)
-    elec_pot = np.zeros(npnt, dtype = complex)
-    delta_dens = elec_dens-bg_dens
-    dz = np.zeros((npnt, npnt))
-    for i in range(npnt):
-        for j in range(npnt):
-            dz[i, j] = np.abs(x[i]-x[j])
-    elec_pot = np.matmul(dz, delta_dens)
-    elec_pot = (elec_pot+elec_pot[::-1])/2
-    return -2*math.pi*elec_pot
+    # Computed as \int V_H*n(z)dz
+    return np.dot(vh_pot, dens_elec)*delta
 
 def tot_energy(elec_dens, bg_dens, bands, nband_occ, z_vec):
     kin = kinetic_energy(bands, nband_occ, z_vec)
@@ -148,7 +162,7 @@ def tot_energy(elec_dens, bg_dens, bands, nband_occ, z_vec):
     return kin+hartree+xc
 
 
-
+### Dielectric properties
 
 def coulomb2d(q_paral, z_pot):
     nz = len(z_pot)
@@ -217,32 +231,33 @@ def scf_fermi_level(d, d_void, top, bottom, density, ext_en, pnt_dens):
         print(e_f)
     return energies, bands, e_f, nmax, v_pot, z_pot
 
-def find_well_width(z_vec, pot):
-    if np.min(pot) == 0:
-        index = np.argwhere(pot-np.max(pot))
-    else:
-        index = np.argwhere(pot)
-    z_out = z_vec[index]
-    return np.max(z_out)-np.min(z_out), len(index)
+
 
 def scf_cycle_energy(v_pot, z_pot, dens, dens_i, d_sys, qp = 0.05, alpha = 1e-7):
-    
-    #Figures
+    # v_pot is the 1-d vector describing the trial potential 
+    # z_pot is the 1-d vector describing the space grid
+    # dens is the jellium density (scalar)
+    # dens_i is the 1-d vector describing the jellium background
+    # d_sys is the width of the slab (total charge is d_sys*dens)
+    # qp is the parallel wave vector [Bohr^-1]
+    # alpha is the stopping criterion
+
+    #Figures for analysis
     fig_energy = go.Figure()
     fig_dens = go.Figure()
     fig_pot = go.Figure()
     
     #Starting point:
-    system_int = jellium_slab(z_pot, v_pot, dens, qp = qp, d = d_sys)
-    system_int.add_densities()
-    dens_0 = system_int.dens_elec
+    system_int = jellium_slab(z_pot, v_pot, dens, qp = qp, d = d_sys) #creates an object to compute the dielectric properties associated to the system created by the potential
+    system_int.add_densities() #Computes the electronic density based on the solution of the Schrodinger equation associated to v_pot
+    dens_0 = system_int.dens_elec 
     
     #Energy analysis arrays
     e_tot_vec = np.array([])
     e_kin_vec = np.array([])
     e_hartree_vec = np.array([])
     e_xc_vec = np.array([])
-    e_pot_vec = np.array([])
+    #e_tot_rs_vec = np.array([])
     
     #Figure Initial density and pot
     fig_dens.add_trace(go.Scatter(x = tools.center_z(system_int.z), y = np.real(dens_0), name = "Starting e-dens", mode = "lines+markers", marker=dict(
@@ -255,29 +270,29 @@ def scf_cycle_energy(v_pot, z_pot, dens, dens_i, d_sys, qp = 0.05, alpha = 1e-7)
     size=5,
     ),))
     
-    #Compute energies of the sarting point
+    #Computes the kinectic energy of the sarting point
     system_int.add_energies()
-    #e_tot_vec = np.append(e_tot_vec, system_int.tot_energy)
-    e_tot0 = system_int.tot_energy
     e_kin_vec= np.append(e_kin_vec, system_int.kin_energy)
     
     
     
-    #Compute the potential associated to the starting point
+    #Computes the potential associated to the starting point
     pot_el = electrostatic_pot(z_pot, dens_0, dens_i)
     pot_xc = xc_pot(dens_0)
+    #Computes the different energies and add them to the energy vector
     e_xc_vec= np.append(e_xc_vec, xc_energy(pot_xc, system_int.dens_elec, system_int.delta_z))
-    e_hartree_vec = np.append(e_hartree_vec, hartree_energy(pot_el, system_int.dens_elec, system_int.delta_z))
-    e_pot_vec = np.append(e_pot_vec, pot_energy(pot_xc, pot_el, system_int.dens_elec, system_int.delta_z))
-    #Compute the preconditionner
+    e_hartree_vec = np.append(e_hartree_vec, hartree_energy(pot_el, system_int.dens_elec-system_int.dens_bg, system_int.delta_z))
+    #e_tot_rs_vec = np.append(e_tot_rs_vec, np.sum(e_tot_rs(system_int.dens_elec))*system_int.delta_z)
+
+    #Computes the preconditionner
     system_int.add_df_inv()
     
-    #Compute the new potential
+    #Computes the new potential
     v_pot_1 = v_pot+np.matmul(system_int.df_inv, pot_el+pot_xc-v_pot)*system_int.delta_z
     v_pot_1 = v_pot_1[0, :]
-    v_pot_1 = (v_pot_1+v_pot_1[::-1])/2
+    v_pot_1 = (v_pot_1+v_pot_1[::-1])/2 #To preserve symmetry
     
-    #Create a new system with the new potential
+    #Create a new system with the new potential and computes the new electronic density
     system_int = jellium_slab(z_pot, v_pot_1, dens, qp = qp, d = d_sys)
     system_int.add_densities()
     dens_1 = system_int.dens_elec
@@ -291,46 +306,50 @@ def scf_cycle_energy(v_pot, z_pot, dens, dens_i, d_sys, qp = 0.05, alpha = 1e-7)
     
     #Compute the energies of the new system
     system_int.add_energies()
-    
-    e_tot_vec = np.append(e_tot_vec, system_int.tot_energy)
-    e_tot1 = system_int.tot_energy
+    #Computes the kinectic energy with the new potential
+    #e_tot_vec = np.append(e_tot_vec, system_int.tot_energy)
     #e_kin_vec= np.append(e_kin_vec, system_int.kin_energy)
     
     #Begining of the scf cycle
     i = 0
     tol = alpha*max(system_int.z)
-    while np.sum(np.abs(dens_0-dens_1))*system_int.delta_z>tol and i<25:
-        e_tot0 = e_tot1
+    while np.sum(np.abs(dens_0-dens_1))*system_int.delta_z>tol and i<40:
         dens_0 = dens_1
-        #New Pot
+        #New electronic potential
         pot_el = electrostatic_pot(z_pot, system_int.dens_elec, dens_i)
         pot_xc = xc_pot(system_int.dens_elec)
-        e_pot_vec = np.append(e_pot_vec, pot_energy(pot_xc, pot_el, system_int.dens_elec, system_int.delta_z))
+        
+        #e_tot_rs_vec = np.append(e_tot_rs_vec, np.sum(e_tot_rs(system_int.dens_elec))*system_int.delta_z)
+
+        #New potential energy
+        e_kin_vec= np.append(e_kin_vec, system_int.kin_energy)
         e_xc_vec= np.append(e_xc_vec, xc_energy(pot_xc, system_int.dens_elec, system_int.delta_z))
-        e_hartree_vec = np.append(e_hartree_vec, hartree_energy(pot_el, system_int.dens_elec, system_int.delta_z))
+        e_hartree_vec = np.append(e_hartree_vec, hartree_energy(pot_el, system_int.dens_elec-system_int.dens_bg, system_int.delta_z))
+
+        #New precond
         system_int.add_df_inv()
+
+        #New pot
         v_pot_1 = v_pot_1+np.matmul(system_int.df_inv, pot_el+pot_xc-v_pot_1)*system_int.delta_z
         v_pot_1 = v_pot_1[0, :]
         v_pot_1 = (v_pot_1+v_pot_1[::-1])/2
+
         #Create a new system with the new potential
         system_int = jellium_slab(z_pot, v_pot_1, dens, qp = qp, d = d_sys)
         system_int.add_densities()
         dens_1 = system_int.dens_elec
+
         #Add each step to the figures
         fig_dens.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(dens_1), name = "Dens "+str(i+2), mode = "lines+markers", marker=dict(
         size=5,
         ),))
-        fig_pot.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(pot_el), name = "Pot "+str(i+2), mode = "lines+markers", marker=dict(
+        fig_pot.add_trace(go.Scatter(x = tools.center_z(z_pot), y = np.real(v_pot_1), name = "Pot "+str(i+2), mode = "lines+markers", marker=dict(
         size=5,
         ),))
-        
-        #Compute the energies of the new system
+
+        #Compute the energies of the new system from the new wave_function
         system_int.add_energies()
-        #e_tot_vec = np.append(e_tot_vec, system_int.tot_energy)
-        e_tot1 = system_int.tot_energy
-        e_kin_vec= np.append(e_kin_vec, system_int.kin_energy)
-        #e_hartree_vec = np.append(e_hartree_vec, system_int.hartree_energy)
-        #e_xc_vec= np.append(e_xc_vec, -system_int.xc_energy)
+        
         i += 1
     
     fig_energy.add_trace(go.Scatter(y = np.real(e_kin_vec)+np.real(e_hartree_vec)+np.real(e_xc_vec)*system_int.nmax, name = "E_tot", mode = "lines+markers", marker=dict(
@@ -345,10 +364,10 @@ def scf_cycle_energy(v_pot, z_pot, dens, dens_i, d_sys, qp = 0.05, alpha = 1e-7)
     fig_energy.add_trace(go.Scatter(y = np.real(e_xc_vec), name = "E_xc", mode = "lines+markers", marker=dict(
         size=5,
         ),))
-    fig_energy.add_trace(go.Scatter(y = np.real(e_pot_vec), name = "E_xc", mode = "lines+markers", marker=dict(
+    """fig_energy.add_trace(go.Scatter(y = np.real(e_tot_rs_vec), name = "E_tot_rs", mode = "lines+markers", marker=dict(
         size=5,
-        ),))
-    fig_energy.update_layout(title_text = r'SCF Energies', title_x=0.5,xaxis_title= r"$z$",
+        ),))"""
+    fig_energy.update_layout(title_text = r'SCF Energies', title_x=0.5,xaxis_title= r"iteration",
         yaxis_title = r'$E \text{ [Ha]}$',paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     fig_dens.update_layout(title_text = r'SCF Densities', title_x=0.5,xaxis_title= r"$z$",
         yaxis_title = r'$\rho(z)$',paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -358,9 +377,15 @@ def scf_cycle_energy(v_pot, z_pot, dens, dens_i, d_sys, qp = 0.05, alpha = 1e-7)
     fig_energy.show()
     fig_dens.show()
     fig_pot.show()
-    if i == 25:
-        raise ValueError("The scf scheme has not found a converged solution after 25 iterations")
+    #In case the convergence is not reached, commented until the code is fixed
+    """if i == 25:
+        print(np.sum(np.abs(dens_0-dens_1))*system_int.delta_z, alpha*max(system_int.z))
+        raise ValueError("The scf scheme has not found a converged solution after 25 iterations")"""
     return v_pot_1
+
+def e_tot_rs(dens_elec):
+    r_s = radius_jellium(dens_elec)
+    return (2.21*np.power(r_s, -2)-1.8*np.power(r_s, -1)-0.916*np.power(r_s,-1)+0.062*np.log(r_s)-0.093)/2
 
 def show_1d_quantity(self, quantity, title = "Title", xaxis = "x", yaxis = "y"):
         fig = go.Figure()
